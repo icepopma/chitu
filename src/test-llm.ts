@@ -4,6 +4,7 @@
  * 运行方式：npx tsx src/test-llm.ts
  */
 
+import 'dotenv/config'
 import { LLMClient } from './llm/client.js'
 
 async function main() {

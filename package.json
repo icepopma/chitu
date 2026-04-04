@@ -11,8 +11,11 @@
     "test": "node --experimental-vm-modules --test tests/"
   },
   "devDependencies": {
-    "typescript": "^5.8.0",
+    "@types/node": "^22.0.0",
     "tsx": "^4.19.0",
-    "@types/node": "^22.0.0"
+    "typescript": "^5.8.0"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.0"
   }
 }

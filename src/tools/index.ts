@@ -10,6 +10,7 @@
 import type { Tool, ToolResult } from './base.js'
 import { toolToDefinition } from './base.js'
 import { execTool } from './exec.js'
+import { readFileTool, writeFileTool, editFileTool } from './files.js'
 
 export type { Tool, ToolResult } from './base.js'
 export { toolToDefinition } from './base.js'
@@ -42,5 +43,8 @@ class ToolRegistry {
 export function createToolRegistry(): ToolRegistry {
   const registry = new ToolRegistry()
   registry.register(execTool)
+  registry.register(readFileTool)
+  registry.register(writeFileTool)
+  registry.register(editFileTool)
   return registry
 }

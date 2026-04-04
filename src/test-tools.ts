@@ -13,6 +13,7 @@
  * Agent Loop 会在下一步自动完成这个循环。
  */
 
+import 'dotenv/config'
 import { LLMClient } from './llm/client.js'
 import { createToolRegistry } from './tools/index.js'
 
