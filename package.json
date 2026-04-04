@@ -1,0 +1,18 @@
+{
+  "name": "chitu",
+  "version": "0.1.0",
+  "description": "A minimal agent system built from scratch",
+  "type": "module",
+  "main": "dist/main.js",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "build": "tsc",
+    "start": "node dist/main.js",
+    "test": "node --experimental-vm-modules --test tests/"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.0",
+    "tsx": "^4.19.0",
+    "@types/node": "^22.0.0"
+  }
+}
