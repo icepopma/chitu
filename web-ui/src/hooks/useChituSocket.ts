@@ -1,0 +1,186 @@
+/**
+ * useChituSocket — WebSocket JSON-RPC 客户端（单例）
+ *
+ * 对齐 Codex App Server 协议
+ * 单例模式：多个组件共享同一个 WebSocket 连接
+ */
+
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useAppStore } from '../lib/store'
+import type { Item } from '../types'
+
+const SERVER_URL = 'ws://localhost:8080'
+
+// ===== 单例 WebSocket 管理 =====
+
+let wsInstance: WebSocket | null = null
+let rpcId = 0
+const pendingRequests = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void }>()
+let notificationHandler: ((method: string, params: any) => void) | null = null
+let connectedCallbacks = new Set<(v: boolean) => void>()
+let initializedCallbacks = new Set<(v: boolean) => void>()
+let isConnecting = false
+
+function sendRequest<T = any>(method: string, params?: Record<string, unknown>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    if (!wsInstance || wsInstance.readyState !== WebSocket.OPEN) {
+      reject(new Error('WebSocket 未连接'))
+      return
+    }
+    const id = ++rpcId
+    pendingRequests.set(id, { resolve, reject })
+    wsInstance.send(JSON.stringify({ jsonrpc: '2.0', id, method, params: params || {} }))
+  })
+}
+
+function connectWebSocket(url: string) {
+  if (wsInstance?.readyState === WebSocket.OPEN || isConnecting) return
+
+  isConnecting = true
+  const ws = new WebSocket(url)
+  wsInstance = ws
+
+  ws.onopen = async () => {
+    // 检查是否仍是当前 ws（StrictMode 安全）
+    if (ws !== wsInstance) { ws.close(); return }
+
+    connectedCallbacks.forEach(cb => cb(true))
+    try {
+      await sendRequest('initialize', {
+        protocolVersion: '1.0.0',
+        clientInfo: { name: 'chitu-web', version: '0.1.0' },
+      })
+      initializedCallbacks.forEach(cb => cb(true))
+
+      const result = await sendRequest<{ threads: any[] }>('thread/list')
+      if (result?.threads) {
+        const { setThreads } = useAppStore.getState()
+        setThreads(result.threads.map((t: any) => ({ id: t.id, title: t.title || '新对话', updatedAt: t.updatedAt || 0 })))
+      }
+    } catch (err) {
+      console.error('[ws] 初始化失败:', err)
+    }
+    isConnecting = false
+  }
+
+  ws.onmessage = (event) => {
+    try {
+      const msg = JSON.parse(event.data)
+      if (msg.id !== undefined) {
+        const pending = pendingRequests.get(msg.id)
+        if (pending) {
+          pendingRequests.delete(msg.id)
+          if (msg.error) pending.reject(new Error(msg.error.message || 'RPC Error'))
+          else pending.resolve(msg.result)
+        }
+      }
+      if (msg.method && notificationHandler) {
+        notificationHandler(msg.method, msg.params)
+      }
+    } catch (err) {
+      console.error('[ws] 解析消息失败:', err)
+    }
+  }
+
+  ws.onclose = () => {
+    connectedCallbacks.forEach(cb => cb(false))
+    initializedCallbacks.forEach(cb => cb(false))
+    wsInstance = null
+    isConnecting = false
+  }
+
+  ws.onerror = () => {
+    console.error('[ws] 连接错误')
+    isConnecting = false
+  }
+}
+
+// ===== React Hook =====
+
+export function useChituSocket(options?: { url?: string }) {
+  const url = options?.url || SERVER_URL
+  const [connected, setConnected] = useState(wsInstance?.readyState === WebSocket.OPEN)
+  const [initialized, setInitialized] = useState(false)
+
+  useEffect(() => {
+    connectedCallbacks.add(setConnected)
+    initializedCallbacks.add(setInitialized)
+    return () => {
+      connectedCallbacks.delete(setConnected)
+      initializedCallbacks.delete(setInitialized)
+    }
+  }, [])
+
+  const {
+    addThread, selectThread, clearItems, setTurnStatus,
+    addItem, updateItem, setItems,
+    currentThreadId,
+  } = useAppStore()
+
+  const currentThreadIdRef = useRef(currentThreadId)
+  useEffect(() => { currentThreadIdRef.current = currentThreadId }, [currentThreadId])
+
+  // 设置通知处理器
+  useEffect(() => {
+    notificationHandler = (method: string, params: any) => {
+      switch (method) {
+        case 'thread/started':
+          if (params?.thread) {
+            addThread({ id: params.thread.id, title: params.thread.title || '新对话', updatedAt: Date.now() })
+          }
+          break
+        case 'turn/started':
+          setTurnStatus('in_progress')
+          break
+        case 'item/started':
+          if (params?.item) addItem(params.item as Item)
+          break
+        case 'item/completed':
+          if (params?.item) updateItem((params.item as Item).id, params.item as Item)
+          break
+        case 'turn/completed':
+          if (params?.turn) setTurnStatus(params.turn.status || 'completed')
+          break
+      }
+    }
+  }, [addThread, setTurnStatus, addItem, updateItem])
+
+  const connect = useCallback(() => connectWebSocket(url), [url])
+
+  const createThread = useCallback(async (title?: string) => {
+    const result = await sendRequest<{ thread: any }>('thread/create', { title })
+    if (result?.thread) {
+      selectThread(result.thread.id)
+      clearItems()
+      return result.thread
+    }
+  }, [selectThread, clearItems])
+
+  const resumeThread = useCallback(async (threadId: string) => {
+    const result = await sendRequest<{ thread: any }>('thread/resume', { threadId })
+    if (result?.thread) {
+      selectThread(threadId)
+      if (result.thread.items) setItems(result.thread.items)
+      return result.thread
+    }
+  }, [selectThread, setItems])
+
+  const sendMessage = useCallback(async (message: string) => {
+    const threadId = currentThreadIdRef.current
+    if (!threadId) throw new Error('没有选中的线程')
+    clearItems()
+    setTurnStatus('in_progress')
+    await sendRequest('turn/start', { threadId, message })
+  }, [clearItems, setTurnStatus])
+
+  const interruptTurn = useCallback(async () => {
+    const threadId = currentThreadIdRef.current
+    if (!threadId) return
+    await sendRequest('turn/interrupt', { threadId })
+    setTurnStatus('idle')
+  }, [setTurnStatus])
+
+  useEffect(() => { connect() }, [connect])
+
+  return { connect, createThread, resumeThread, sendMessage, interruptTurn, connected, initialized }
+}

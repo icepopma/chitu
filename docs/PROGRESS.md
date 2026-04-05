@@ -17,6 +17,16 @@
   - [x] 5.5 集成测试通过 — Agent 自主执行任务，Items 链路完整
   - [x] 5.6 事件系统 — AppEvent 类型 + EventHandler 回调
   - [x] 5.7 事件发射对齐 Codex 协议 — 7/7 测试通过
+- [x] **第 6 步：WebSocket App Server** ✅
+  - [x] 6.1 JSON-RPC 2.0 协议层 `src/server/json-rpc.ts` — 类型 + 编解码 + 标准错误码
+  - [x] 6.2 Message Processor `src/server/message-processor.ts` — JSON-RPC ↔ ThreadManager 翻译层
+    - 7 个路由：initialize, thread/create, thread/list, thread/resume, thread/archive, turn/start, turn/interrupt
+    - AppEvent → JSON-RPC 通知映射（5 种通知）
+    - initialize 握手（未握手拒绝调用）
+  - [x] 6.3 WebSocket 服务器 `src/server/index.ts` — ws 库，连接管理
+  - [x] 6.4 Turn 异步执行 — turn/start 立即返回，Agent Loop 后台运行
+  - [x] 6.5 客户端断线不影响 Turn — AbortController 按 threadId 管理
+  - [x] 6.6 端到端测试 — 7/7 通知序列验证通过
     - 事件序列：thread/started → turn/started → item/started/completed (user_message/tool_call/tool_result/assistant_message) → turn/completed
     - ThreadManager.onEvent(handler) 供未来的 Message Processor 监听
     - addItem 内部 emit item/started + item/completed
@@ -252,9 +262,219 @@ Client                                   Server
   - 来源：Codex 文章第 4 篇的"仓库作为记录系统"
 
 - [ ] **第 7 步：前端**
-  - Vite + React + TailwindCSS
-  - WebSocket JSON-RPC 客户端
-  - 聊天界面 + 工具调用展示 + 取消按钮
+
+#### 7.1 技术选型
+
+| 技术 | 选择 | 原因 |
+|---|---|---|
+| 框架 | Vite + React 18 | 学习项目不需要 Next.js SSR |
+| 样式 | TailwindCSS | 复用 agent-system-v2 的 Discord 暗色主题 |
+| 状态管理 | Zustand | 轻量，agent-system-v2 已验证 |
+| 图标 | Lucide React | agent-system-v2 同款 |
+| WebSocket | 浏览器原生 | 连接 Chitu App Server |
+
+#### 7.2 UI 布局（Discord 风格）
+
+```
+┌─────────┬───────────────────────────────────────────┐
+│         │  Header — 线程标题 + 连接状态 + 取消按钮   │
+│  🏠     ├───────────────────────────────────────────┤
+│  ───    │                                           │
+│  💬 线程1│  Messages                                 │
+│  💬 线程2│  ┌─ User Message ─────────────────────┐  │
+│  💬 线程3│  │ 请帮我创建一个文件                    │  │
+│         │  └──────────────────────────────────────┘  │
+│  ───    │  ┌─ Tool Call (可折叠) ─────────────────┐  │
+│  ＋新建  │  │ 🔧 exec: echo "hello"                │  │
+│         │  │ ↳ Hello                               │  │
+│         │  └──────────────────────────────────────┘  │
+│         │  ┌─ Assistant Message ──────────────────┐  │
+│         │  │ 🐰 文件已创建完成！                    │  │
+│         │  └──────────────────────────────────────┘  │
+│         │                                           │
+│         ├───────────────────────────────────────────┤
+│         │  [  输入消息...                    ] [发送] │
+└─────────┴───────────────────────────────────────────┘
+```
+
+**颜色方案**（复用 agent-system-v2 的 globals.css）：
+- 背景: `#1a1a1a` / `#2a2a2a`
+- 强调色: `#5865f2`（Discord 蓝紫）
+- 文字: `#ffffff` / `#888888`
+- 成功: `#43b581`
+- 边框: `#2a2a2a`
+- Discord 风格滚动条
+
+#### 7.3 文件结构
+
+```
+web-ui/
+  ├── index.html
+  ├── vite.config.ts
+  ├── tailwind.config.ts
+  ├── postcss.config.js
+  ├── package.json
+  ├── src/
+  │   ├── main.tsx                — 入口
+  │   ├── App.tsx                 — 根组件 + 路由
+  │   ├── index.css               — Tailwind + Discord 主题（复用 globals.css）
+  │   ├── lib/
+  │   │   ├── store.ts            — Zustand 状态（简化版）
+  │   │   └── utils.ts            — cn() 工具函数
+  │   ├── hooks/
+  │   │   └── useChituSocket.ts   — WebSocket JSON-RPC 客户端
+  │   ├── components/
+  │   │   ├── Layout.tsx          — 三栏布局
+  │   │   ├── Sidebar.tsx         — 线程列表（Discord 频道列表）
+  │   │   ├── ChatArea.tsx        — 主聊天区（复用 chat-area.tsx 结构）
+  │   │   ├── MessageList.tsx     — 消息列表
+  │   │   ├── MessageItem.tsx     — 单条消息
+  │   │   ├── ToolCallItem.tsx    — 工具调用（可折叠）
+  │   │   ├── ChatInput.tsx       — 输入框 + 发送按钮
+  │   │   └── WelcomeScreen.tsx   — 欢迎页
+  │   └── types/
+  │       └── index.ts            — 类型定义（对齐 Chitu types.ts）
+```
+
+#### 7.4 核心组件设计
+
+**Layout.tsx** — 三栏布局
+```
+<div class="flex h-screen">
+  <Sidebar />         {/* 左侧 240px */}
+  <ChatArea />        {/* 右侧 flex-1 */}
+</div>
+```
+
+**Sidebar.tsx** — Discord 频道列表
+- 顶部 Logo + 标题 "赤兔"
+- 连接状态指示灯（绿/红）
+- 线程列表（点击切换，当前线程高亮）
+- 底部 "＋ 新建对话" 按钮
+- 复用 agent-system-v2 的 sidebar 结构
+
+**ChatArea.tsx** — 主聊天区（复用 chat-area.tsx）
+- Header: 线程标题 + Turn 状态 + 取消按钮
+- MessageList: 滚动消息列表
+- ChatInput: 输入框
+- 无线程时显示 WelcomeScreen
+
+**MessageItem.tsx** — 消息气泡
+- user_message: 用户头像 + 消息内容
+- assistant_message: 🐰 头像 + Markdown 渲染
+- tool_call: 🔧 工具图标 + 折叠面板
+- tool_result: ↳ 结果展示（代码块高亮）
+
+**ToolCallItem.tsx** — 工具调用展示（可折叠）
+```
+┌─ 🔧 exec ───────────────────── [▼] ─┐
+│  命令: echo "hello"                   │
+│  结果: Hello                          │
+└──────────────────────────────────────┘
+```
+
+**ChatInput.tsx** — 输入区（复用 chat-input.tsx）
+- 自动扩展 textarea
+- Enter 发送，Shift+Enter 换行
+- 发送按钮（Turn 运行中变为取消按钮）
+
+**WelcomeScreen.tsx** — 空状态欢迎页
+- 🐰 大图标
+- "你好，我是赤兔" 标题
+- 能力列表
+- 复用 agent-system-v2 的 welcome-screen.tsx
+
+#### 7.5 状态管理（Zustand）
+
+```typescript
+interface AppState {
+  // 连接
+  connected: boolean
+  initialized: boolean
+
+  // 线程
+  threads: Array<{ id: string; title: string; updatedAt: number }>
+  currentThreadId: string | null
+
+  // 消息 (Items)
+  items: Item[]
+
+  // Turn 状态
+  turnStatus: 'idle' | 'running' | 'completed' | 'failed'
+
+  // Actions
+  selectThread: (id: string | null) => void
+  addItem: (item: Item) => void
+  updateItem: (itemId: string, update: Partial<Item>) => void
+  clearItems: () => void
+  setTurnStatus: (status: string) => void
+}
+```
+
+#### 7.6 WebSocket Hook（useChituSocket.ts）
+
+**参考 agent-system-v2 的 useAppServer.ts，简化重写：**
+
+```
+连接流程：
+1. new WebSocket(serverUrl)
+2. onopen → sendRequest('initialize', { clientInfo })
+3. 收到 response → setIsInitialized(true)
+
+消息交互：
+4. sendRequest('thread/create') → 创建线程
+5. sendRequest('turn/start', { threadId, message }) → 发消息
+6. 收到 notifications → 更新 Zustand store
+
+通知处理：
+- thread/started → 添加到 threads 列表
+- turn/started → setTurnStatus('running')
+- item/started → addItem(item)
+- item/completed → updateItem(id, item)
+- turn/completed → setTurnStatus('idle')
+```
+
+**关键特性（复用 useAppServer.ts 的模式）：**
+- pendingRequests Map 管理 request-response
+- useRef 防闭包问题
+- 连接状态管理
+- 自动重连
+
+#### 7.7 消息渲染逻辑
+
+Items 按时间排序渲染，根据 type 分组：
+```
+[user_message]    → 消息气泡（用户）
+  [tool_call]     → 工具调用（折叠）
+  [tool_result]   → 工具结果（折叠内）
+  [tool_call]     → 工具调用（折叠）
+  [tool_result]   → 工具结果（折叠内）
+[assistant_message] → 消息气泡（Agent）
+```
+
+#### 7.8 与 agent-system-v2 的复用关系
+
+| 组件 | 来源 | 改动 |
+|---|---|---|
+| Layout | layout.tsx | 简化为两栏（去掉 diff/terminal 面板） |
+| Sidebar | sidebar/ThreadList | 简化为纯线程列表 |
+| ChatArea | chat-area.tsx | 基本复用，去掉 task/confirmation 逻辑 |
+| MessageList | message-list.tsx | 复用，改用 Chitu Item 类型 |
+| ChatInput | chat-input.tsx | 基本复用，去掉 model/sandbox 选择 |
+| WelcomeScreen | welcome-screen.tsx | 基本复用 |
+| globals.css | globals.css | 完全复用 Discord 暗色主题 |
+| store.ts | store.ts | 简化，只保留线程/消息/连接状态 |
+| useAppServer.ts | hooks/useAppServer.ts | 重写为 useChituSocket.ts，对齐 Chitu 协议 |
+
+#### 7.9 验证方式
+
+1. 启动 Chitu App Server（`npx tsx src/server/index.ts`）
+2. 启动前端（`cd web-ui && npm run dev`）
+3. 浏览器打开 → 看到 Discord 风格 UI
+4. 点击 "新建对话" → 左侧出现新线程
+5. 输入消息 → 看到 Agent 回复 + 工具调用过程
+6. 点击取消 → Agent 停止
+7. 切换线程 → 消息正确显示
 
 - [ ] **第 8 步：上下文压缩**
   - Token 计数估算
@@ -262,6 +482,23 @@ Client                                   Server
   - 支持长任务不爆上下文
 
 ## 里程碑记录
+
+### 2026-04-05：WebSocket App Server 端到端跑通
+
+**完成了什么**：完整实现了 Codex App Server 的 4 层架构，WebSocket + JSON-RPC 2.0 协议。
+
+**怎么做的**：
+- JSON-RPC 2.0 协议层（json-rpc.ts）：类型、编解码、标准错误码
+- Message Processor（message-processor.ts）：7 个路由 + 5 种通知映射
+- WebSocket 服务器（index.ts）：连接管理 + 路由分发
+- Turn 异步执行：turn/start 立即返回，Agent Loop 后台运行
+- 客户端断线不中断 Turn：AbortController 按 threadId 管理
+- 端到端测试 7/7 通过
+
+**架构对齐 Codex**：
+```
+Transport (WebSocket) → Message Processor → Thread Manager → Core Threads
+```
 
 ### 2026-04-05：事件系统对齐 Codex 协议
 
