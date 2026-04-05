@@ -11,7 +11,7 @@
 import { randomUUID } from 'crypto'
 import type { Thread, Turn, Item, AppEvent, EventHandler } from '../types.js'
 import { ThreadStore } from './store.js'
-import { runAgentLoop } from '../agent/loop.js'
+import { runAgentLoop, buildSystemPrompt } from '../agent/loop.js'
 import type { AgentResult } from '../agent/loop.js'
 import { LLMClient } from '../llm/client.js'
 import { createToolRegistry } from '../tools/index.js'
@@ -171,7 +171,7 @@ export class ThreadManager {
       agentResult = await runAgentLoop(userInput, {
         client,
         tools,
-        systemPrompt: options?.systemPrompt || '你是一个自主 Agent，可以通过工具完成用户的任务。用中文回复。',
+        systemPrompt: options?.systemPrompt || buildSystemPrompt(),
         maxIterations: options?.maxIterations || 50,
         signal: options?.signal,
         onStep: (step) => {

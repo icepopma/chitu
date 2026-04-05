@@ -39,16 +39,14 @@
 - [x] Review Client-Server 消息流 — 确认事件序列对齐 Codex 协议
 - [x] Review 通信协议 — JSON-RPC 2.0 + WebSocket（Codex 用 stdio，我们用 WebSocket 合理）
 
-### 第 5 步暂不做的（后面加）
+### 第 5 步暂不做的（已归并到步骤 8-13）
 
-- [ ] approval_request（审批流，Server → Client 请求）
-- [ ] diff（文件差异展示）
-- [ ] fork（线程分叉，从某个节点分出新线程）
-- [ ] delta 事件（流式增量，第 6 步加 WebSocket 后才有意义）
+- [x] ~~approval_request~~ → **归入步骤 12（安全审批）**
+- [x] ~~diff~~ → **归入步骤 13（远期高级能力）**
+- [x] ~~fork~~ → **归入步骤 13（远期高级能力）**
+- [x] ~~delta 事件~~ → **归入步骤 13（远期高级能力）**
 
 ## 下一步
-
-### 第 6 步：WebSocket App Server（详细设计）
 
 > 对齐 Codex 文章第 4 篇的 App Server 架构
 > Codex 4 组件：Transport → Message Processor → Thread Manager → Core Threads
@@ -244,22 +242,18 @@ Client                                   Server
 
 ---
 
-### 第 6 步暂不做的（后面加）
+### 第 6 步暂不做的（已归并到步骤 8-13）
 
-- [ ] **item/delta** 流式增量（需要 Agent Loop 支持 streaming，复杂度高）
-- [ ] **approval_request** 审批流（Server → Client 主动请求，需要双向请求机制）
-- [ ] **diff** Item 类型（文件差异展示）
-- [ ] **多线程并行**（架构预留：每个线程独立 AbortController，暂不实现并发调度）
-- [ ] **向后兼容**（initialize 交换版本号已预留，暂不实现版本协商逻辑）
-- [ ] **配置和身份验证**（Codex 有 ChatGPT 登录流程，我们暂不需要）
+- [x] ~~item/delta 流式增量~~ → **归入步骤 13（远期高级能力）**
+- [x] ~~approval_request 审批流~~ → **归入步骤 12（安全审批）**
+- [x] ~~diff Item 类型~~ → **归入步骤 13（远期高级能力）**
+- [x] ~~多线程并行~~ → **归入步骤 13（远期高级能力）**
+- [x] ~~向后兼容~~ → **删除（学习项目，单客户端无需版本协商）**
+- [x] ~~配置和身份验证~~ → **删除（学习项目，无需 ChatGPT 登录流程）**
 
 ---
 
-- [ ] **第 6.5 步：项目上下文注入（agent.md 地图）**
-  - 系统自动加载项目根目录的 agent.md
-  - 把 agent.md 内容注入 system prompt，作为 Agent 的"地图"
-  - Agent 不用盲目探索，一开始就知道项目结构、约定、注意事项
-  - 来源：Codex 文章第 4 篇的"仓库作为记录系统"
+- [x] ~~**第 6.5 步：项目上下文注入（agent.md 地图）**~~ → **归入步骤 8（AGENTS.md 项目地图）**
 
 - [x] **第 7 步：前端（Discord 风格 UI）** ✅
   - [x] 7.1 Vite + React 18 + TailwindCSS 项目搭建 `web-ui/`
@@ -269,10 +263,121 @@ Client                                   Server
   - [x] 7.5 Zustand 状态管理（threads, items, turnStatus）
   - [x] 7.6 端到端测试通过 — 新建对话 → 发消息 → Agent 执行工具 → 显示结果
 
-- [ ] **第 8 步：上下文压缩**
-  - Token 计数估算
-  - 超阈值时自动压缩（让 LLM 总结历史）
-  - 支持长任务不爆上下文
+### 下一步：步骤 8-13（2026-04-05 更新）
+
+> 对齐 Harness Engineering 文章 + Codex CLI 源码分析
+> 目标：实现"用赤兔生成并优化赤兔"——完全自主运行
+
+**当前差距分析（6 个缺失层）：**
+
+| 缺失层 | 为什么关键 | Codex 怎么做的 |
+|--------|-----------|--------------|
+| 上下文压缩 | Agent 做不了长任务，token 几分钟爆 | compact.rs — 自动摘要 + 重注入初始上下文 |
+| AGENTS.md 地图 | Agent 不认识项目，盲目探索 | ≈100 行目录文件 + 渐进式披露 |
+| 自我验证 | Agent 改了代码不知道对不对 | reproduce → fix → verify 闭环 |
+| 输出边界 | 工具输出炸上下文 | HeadTailBuffer：head + tail，中间截断 |
+| 安全审批 | Agent 可能把项目搞坏 | 只读命令自动批准 + 写入需确认 |
+| 会话持久化 | Agent 跑 30 分钟崩了白费 | JSONL 事件流记录 + resume/fork |
+
+**依赖关系：**
+```
+步骤 8 (AGENTS.md)
+  ↓
+步骤 9 (输出截断)
+  ↓
+步骤 10 (上下文压缩) ← 依赖步骤 8（压缩后重注入）和步骤 9（截断策略）
+  ↓
+步骤 11 (自我验证) ← 依赖步骤 9（输出截断）和步骤 8（验证指令在 system prompt）
+  ↓
+步骤 12 (安全审批) ← 独立，可随时做
+  ↓
+步骤 13 (高级能力) ← 远期
+```
+
+- [ ] **第 8 步：AGENTS.md 项目地图 + 增强系统提示**
+  - [ ] 8.1 启动时自动扫描项目根目录 `AGENTS.md`（或 `agent.md`）
+  - [ ] 8.2 AGENTS.md 内容作为 **user-role message** 注入（不是 system role），格式：
+    ```
+    # AGENTS.md instructions for /path/to/project
+
+    <INSTRUCTIONS>
+    ...AGENTS.md 文件内容...
+    </INSTRUCTIONS>
+    ```
+  - [ ] 8.3 增强 system prompt（developer-role），对齐 Codex prompt.md 结构：
+    - **身份定义**："你是一个自主编码 Agent，运行在赤兔（Chitu）中"
+    - **人格设定**：简洁、直接、友好，优先给出可操作指导
+    - **AGENTS.md spec**：说明 AGENTS.md 的作用域和优先级规则
+    - **自主性指令**："一旦有了方向就主动收集上下文、实施、测试，坚持到任务端到端完成"
+    - **验证指令**："代码修改后必须运行相关测试，失败时分析错误并修正"
+    - **工具使用指南**：优先用专用工具（read_file）而非原始 shell 命令（cat）
+  - [ ] 8.4 初始上下文组装顺序（对齐 Codex build_initial_context）：
+    1. system-role message：身份 + 人格 + AGENTS.md spec + 自主性 + 验证 + 工具指南
+    2. user-role message：AGENTS.md 片段（`<INSTRUCTIONS>` 包裹）
+    3. user-role message：环境上下文（cwd、shell、日期）
+    4. user-role message：用户实际输入
+  - [ ] 8.5 AGENTS.md 加 32KiB 大小限制（对齐 Codex project_doc_max_bytes）
+  - [ ] 8.6 写一个赤兔自己的 `AGENTS.md`，描述赤兔项目结构
+  - **修改文件：** `src/agent/loop.ts`, `src/context.ts`（新建）, `AGENTS.md`（新建）, `src/llm/client.ts`
+  - **验证：** Agent 系统提示包含 AGENTS.md 内容，知道赤兔的 src/ 结构
+
+- [ ] **第 9 步：执行环境优化（输出边界）**
+  - [ ] 9.1 实现 `truncateOutput(content, maxTokens)` — 保留前半+后半，中间截断
+  - [ ] 9.2 改造 `exec.ts` — 加 `NO_COLOR=1`, `TERM=dumb`, `PAGER=cat` 环境变量
+  - [ ] 9.3 改造 `agent/loop.ts` — 工具结果进入 messages 前先截断
+  - [ ] 9.4 默认每个工具结果上限 10K token（≈40KB）
+  - **修改文件：** `src/tools/exec.ts`, `src/utils/truncate.ts`（新建）, `src/agent/loop.ts`
+  - **验证：** 执行大输出命令，进入 messages 的内容被正确截断
+
+- [ ] **第 10 步：上下文压缩**
+  - [ ] 10.1 Token 计数估算（`approxTokenCount(text)` — `text.length / 4`）
+  - [ ] 10.2 在 Agent Loop 每轮开始前检查 token 用量
+  - [ ] 10.3 超阈值时触发压缩：LLM 生成历史摘要 + 保留最近 20K token 用户消息
+  - [ ] 10.4 压缩后重新注入 AGENTS.md（初始上下文注入）
+  - **修改文件：** `src/utils/token.ts`（新建）, `src/agent/compact.ts`（新建）, `src/agent/loop.ts`
+  - **验证：** 给 Agent 10+ 轮任务，观察压缩触发后 Agent 继续正常工作
+
+- [ ] **第 11 步：自我验证闭环**
+  - [ ] 11.1 增强 system prompt，加入验证指令（修改后必须跑测试，失败要修正）
+  - [ ] 11.2 改造 `exec.ts` — 结构化返回（stdout/stderr/exitCode 分离）
+  - [ ] 11.3 增强 `Item` 类型 — tool_result 加入 `exitCode` 字段
+  - [ ] 11.4 Agent 理解退出码语义：0=成功，非0=失败需要修复
+  - **修改文件：** `src/types.ts`, `src/tools/exec.ts`, `src/agent/loop.ts`
+  - **验证：** Agent 能：执行测试 → 看失败 → 修改代码 → 再测 → 通过
+
+- [ ] **第 12 步：安全与审批**
+  - [ ] 12.1 定义命令分类：只读命令自动批准，写入命令需确认
+  - [ ] 12.2 实现简单审批策略：`autoApprove` 或 `askUser`
+  - [ ] 12.3 前端显示审批请求 UI
+  - **修改文件：** `src/tools/policy.ts`（新建）, `src/tools/exec.ts`, `src/types.ts`, 前端
+  - **验证：** `ls` 自动通过，`rm` 弹出审批请求
+
+- [ ] **第 13 步：高级能力（远期）**
+  - [ ] 13.1 会话事件流记录（Rollout Recording） — JSONL 记录 + resume/fork
+  - [ ] 13.2 Skills 系统 — `SKILL.md` 可复用工作流
+  - [ ] 13.3 多 Agent 协作 — 子任务拆分、并行执行、结果合并
+  - [ ] 13.4 执行计划（PLANS.md） — 多小时任务的活文档管理
+  - [ ] 13.5 沙盒执行 — Docker 容器隔离
+  - [ ] 13.6 分层 AGENTS.md 收集（root-to-CWD 所有目录，非仅根目录）
+  - [ ] 13.7 环境上下文改 XML 子元素格式（`<cwd>...</cwd>` 而非 key-value）
+  - [ ] 13.8 系统提示补充最终回复格式规范（文件引用用反引号、标题分段）
+  - [ ] 13.9 回合间环境差异检测（只发 delta，不重复注入）
+
+### 步骤 8 比对结论（2026-04-05 与 Codex 仓库比对）
+
+**完全对齐：**
+- AGENTS.md 注入格式（`<INSTRUCTIONS>` 包裹 + user-role）
+- 注入顺序（system → AGENTS.md → 环境上下文 → 用户输入）
+- 候选文件优先级（`AGENTS.override.md` > `AGENTS.md`）
+- 32KiB 大小限制
+- 环境上下文字段覆盖（cwd, shell, date）
+
+**可接受差距（归入步骤 13 远期）：**
+- 只读根目录 AGENTS.md（Codex 读 root-to-CWD）→ 13.6
+- 环境上下文 key-value 格式（Codex 用 XML 子元素）→ 13.7
+- 系统提示缺最终回复格式规范 → 13.8
+- 没有回合间环境差异检测 → 13.9
+- 没有 developer-role 分离（GLM API 无此角色，非遗漏）
 
 ## 里程碑记录
 
