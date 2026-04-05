@@ -294,9 +294,9 @@ Client                                   Server
 步骤 13 (高级能力) ← 远期
 ```
 
-- [ ] **第 8 步：AGENTS.md 项目地图 + 增强系统提示**
-  - [ ] 8.1 启动时自动扫描项目根目录 `AGENTS.md`（或 `agent.md`）
-  - [ ] 8.2 AGENTS.md 内容作为 **user-role message** 注入（不是 system role），格式：
+- [x] **第 8 步：AGENTS.md 项目地图 + 增强系统提示** ✅
+  - [x] 8.1 启动时自动扫描项目根目录 `AGENTS.md`（或 `agent.md`）
+  - [x] 8.2 AGENTS.md 内容作为 **user-role message** 注入（不是 system role），格式：
     ```
     # AGENTS.md instructions for /path/to/project
 
@@ -304,22 +304,22 @@ Client                                   Server
     ...AGENTS.md 文件内容...
     </INSTRUCTIONS>
     ```
-  - [ ] 8.3 增强 system prompt（developer-role），对齐 Codex prompt.md 结构：
+  - [x] 8.3 增强 system prompt（developer-role），对齐 Codex prompt.md 结构：
     - **身份定义**："你是一个自主编码 Agent，运行在赤兔（Chitu）中"
     - **人格设定**：简洁、直接、友好，优先给出可操作指导
     - **AGENTS.md spec**：说明 AGENTS.md 的作用域和优先级规则
     - **自主性指令**："一旦有了方向就主动收集上下文、实施、测试，坚持到任务端到端完成"
     - **验证指令**："代码修改后必须运行相关测试，失败时分析错误并修正"
     - **工具使用指南**：优先用专用工具（read_file）而非原始 shell 命令（cat）
-  - [ ] 8.4 初始上下文组装顺序（对齐 Codex build_initial_context）：
+  - [x] 8.4 初始上下文组装顺序（对齐 Codex build_initial_context）：
     1. system-role message：身份 + 人格 + AGENTS.md spec + 自主性 + 验证 + 工具指南
     2. user-role message：AGENTS.md 片段（`<INSTRUCTIONS>` 包裹）
     3. user-role message：环境上下文（cwd、shell、日期）
     4. user-role message：用户实际输入
-  - [ ] 8.5 AGENTS.md 加 32KiB 大小限制（对齐 Codex project_doc_max_bytes）
-  - [ ] 8.6 写一个赤兔自己的 `AGENTS.md`，描述赤兔项目结构
-  - **修改文件：** `src/agent/loop.ts`, `src/context.ts`（新建）, `AGENTS.md`（新建）, `src/llm/client.ts`
-  - **验证：** Agent 系统提示包含 AGENTS.md 内容，知道赤兔的 src/ 结构
+  - [x] 8.5 AGENTS.md 加 32KiB 大小限制（对齐 Codex project_doc_max_bytes）
+  - [x] 8.6 写一个赤兔自己的 `AGENTS.md`，描述赤兔项目结构
+  - **修改文件：** `src/agent/loop.ts`, `src/context.ts`（新建）, `AGENTS.md`（新建）, `src/thread/manager.ts`
+  - **验证：** ✅ 6 项测试通过 — findProjectRoot, loadAgentsMd, formatAgentsMdInjection, buildEnvironmentContext, buildProjectContext, buildInitialMessages
 
 - [ ] **第 9 步：执行环境优化（输出边界）**
   - [ ] 9.1 实现 `truncateOutput(content, maxTokens)` — 保留前半+后半，中间截断
@@ -380,6 +380,27 @@ Client                                   Server
 - 没有 developer-role 分离（GLM API 无此角色，非遗漏）
 
 ## 里程碑记录
+
+### 2026-04-05：步骤 8 完成 — AGENTS.md 项目地图 + 增强系统提示
+
+**完成了什么：** Agent 启动时自动加载项目 AGENTS.md，系统提示对齐 Codex prompt.md 结构。
+
+**怎么做的：**
+- `src/context.ts`（新建）— AGENTS.md 发现、加载、格式化、32KiB 限制
+  - `findProjectRoot()` — 从 CWD 向上找 `.git` 确定项目根
+  - `loadAgentsMd()` — 候选优先级 `AGENTS.override.md` > `AGENTS.md`
+  - `formatAgentsMdInjection()` — `<INSTRUCTIONS>` 包裹 + user-role 注入
+  - `buildEnvironmentContext()` — cwd、shell、日期、平台
+- `src/agent/loop.ts`（重写）— 增强系统提示 + 初始上下文组装
+  - `buildSystemPrompt()` — 6 段结构对齐 Codex prompt.md
+  - `buildInitialMessages()` — 4 层组装：system → AGENTS.md → env → user
+- `src/thread/manager.ts`（2 行改动）— `systemPrompt` 改用 `buildSystemPrompt()`
+- `AGENTS.md`（新建）— 赤兔项目地图
+- 验证 6/6 通过
+
+**与 Codex 仓库比对结论：**
+- 完全对齐：注入格式、注入顺序、候选文件优先级、32KiB 限制
+- 可接受差距归入步骤 13 远期（分层收集、XML 格式、差异检测等）
 
 ### 2026-04-05：WebSocket App Server 端到端跑通
 
