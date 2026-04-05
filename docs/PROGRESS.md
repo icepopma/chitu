@@ -244,23 +244,7 @@ Client                                   Server
 
 ---
 
-- [x] **第 6 步：WebSocket App Server** ✅
-  - [x] 6.1 JSON-RPC 2.0 协议层 `src/server/json-rpc.ts`
-  - [x] 6.2 Message Processor `src/server/message-processor.ts`
-  - [x] 6.3 WebSocket 服务器 `src/server/index.ts`
-  - [x] 6.4 Turn 异步执行 + AbortController
-  - [x] 6.5 客户端断线不中断 Turn
-  - [x] 6.6 端到端测试 7/7 通过
-
-- [x] **第 7 步：Discord 风格前端** ✅
-  - [x] 7.1 Vite + React 18 + TailwindCSS 项目搭建
-  - [x] 7.2 Discord 暗色主题（复用 agent-system-v2 配色）
-  - [x] 7.3 核心组件：Layout, Sidebar, ChatArea, ChatInput, MessageItem, ToolCallItem, WelcomeScreen
-  - [x] 7.4 WebSocket JSON-RPC 客户端（useChituSocket.ts，单例模式）
-  - [x] 7.5 Zustand 状态管理
-  - [x] 7.6 端到端测试通过：新建对话 → 发消息 → Agent 执行工具 → 显示结果
-
-### 第 6、7 步暂不做的（后面加）
+### 第 6 步暂不做的（后面加）
 
 - [ ] **item/delta** 流式增量（需要 Agent Loop 支持 streaming，复杂度高）
 - [ ] **approval_request** 审批流（Server → Client 主动请求，需要双向请求机制）
@@ -274,7 +258,16 @@ Client                                   Server
 - [ ] **第 6.5 步：项目上下文注入（agent.md 地图）**
   - 系统自动加载项目根目录的 agent.md
   - 把 agent.md 内容注入 system prompt，作为 Agent 的"地图"
+  - Agent 不用盲目探索，一开始就知道项目结构、约定、注意事项
   - 来源：Codex 文章第 4 篇的"仓库作为记录系统"
+
+- [x] **第 7 步：前端（Discord 风格 UI）** ✅
+  - [x] 7.1 Vite + React 18 + TailwindCSS 项目搭建 `web-ui/`
+  - [x] 7.2 Discord 暗色主题（复用 agent-system-v2 配色方案）
+  - [x] 7.3 核心组件：Layout, Sidebar, ChatArea, ChatInput, MessageItem, ToolCallItem, WelcomeScreen
+  - [x] 7.4 WebSocket JSON-RPC 客户端（useChituSocket.ts，单例模式，StrictMode 安全）
+  - [x] 7.5 Zustand 状态管理（threads, items, turnStatus）
+  - [x] 7.6 端到端测试通过 — 新建对话 → 发消息 → Agent 执行工具 → 显示结果
 
 - [ ] **第 8 步：上下文压缩**
   - Token 计数估算
@@ -282,24 +275,6 @@ Client                                   Server
   - 支持长任务不爆上下文
 
 ## 里程碑记录
-
-### 2026-04-05：Discord 风格前端端到端跑通
-
-**完成了什么**：完整的 Discord 风格聊天 UI，连接后端 App Server 实现 Agent 对话。
-
-**怎么做的**：
-- Vite + React 18 + TailwindCSS 搭建前端
-- Discord 暗色主题（复用 agent-system-v2 配色方案）
-- 7 个核心组件：Layout, Sidebar, ChatArea, ChatInput, MessageItem, ToolCallItem, WelcomeScreen
-- useChituSocket.ts 单例 WebSocket Hook（JSON-RPC 2.0 客户端）
-- Zustand 状态管理（线程、消息、Turn 状态）
-- 工具调用可折叠展示
-
-**端到端验证**：
-- 浏览器打开 → Discord 风格 UI，绿色连接状态
-- 点击"新建对话" → 侧边栏出现线程
-- 输入消息 → Agent 执行 exec 工具 → 返回结果
-- 消息流完整：user_message → tool_call → tool_result → assistant_message
 
 ### 2026-04-05：WebSocket App Server 端到端跑通
 
