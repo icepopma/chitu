@@ -384,6 +384,43 @@ Client                                   Server
 
 ## 里程碑记录
 
+### 2026-04-06：步骤 12 完成 — 安全与审批（含接线修复）
+
+**完成了什么：** Agent 执行高风险命令（rm、git push 等）前需要用户审批，实现安全控制闭环。
+
+**为什么重要：** 没有审批机制，Agent 有完全的 shell 权限，一个误操作就能破坏项目。审批是 Codex 安全模型的核心。
+
+**怎么做的：**
+- `src/tools/policy.ts`（新建）— 命令风险三级分类
+  - `classifyCommand(command)` → `read` / `write` / `dangerous`
+  - `checkApproval(command, mode)` → `auto-approved` / `needs-approval`
+  - 只读命令（ls, git status, npm test）自动批准
+  - 写入命令（mkdir, npm install）需确认
+  - 危险命令（rm -rf, git push --force, sudo）需确认
+- `src/tools/base.ts` — Tool 接口加 `needsApproval?(args)` 可选方法
+- `src/tools/exec.ts` — 实现 `needsApproval`：exec 根据 policy.ts 分类
+- `src/agent/loop.ts` — `AgentLoopConfig` 加 `onApprovalNeeded` 回调，执行前检查审批
+- `src/types.ts` — `AppEvent` 加 `approval/requested` 事件类型
+- `src/server/message-processor.ts` — 审批回调创建 + `approval/respond` JSON-RPC 路由 + 30s 超时
+- `src/thread/manager.ts` — `RunTurnOptions` 加 `onApprovalNeeded`，传给 `runAgentLoop`
+- 前端 `ApprovalBanner.tsx`（新建）— 审批横幅组件（风险着色 + 允许/拒绝按钮）
+- 前端 `store.ts` — `pendingApproval` 状态
+- 前端 `useChituSocket.ts` — 监听 `approval/requested` + `respondApproval()` 方法
+
+**关键修复（0c785cc）：** 审批策略实现后，`onApprovalNeeded` 回调没有从 MessageProcessor → ThreadManager → AgentLoop 传递，所有命令绕过审批。修复后完整链路打通。
+
+**端到端验证（Playwright）：**
+```
+用户发消息："请执行 rm -rf /tmp/chitu-test"
+  → Agent 调用 exec("rm -rf /tmp/chitu-test")
+    → needsApproval() = true
+      → Agent Loop 暂停，推 approval/requested 到前端
+        → ApprovalBanner 显示（红色危险标记 + 命令预览 + 允许/拒绝按钮）
+          → 用户点击"拒绝"
+            → 前端发 approval/respond { approved: false }
+              → Agent 收到拒绝，优雅处理："操作被拒绝了"
+```
+
 ### 2026-04-06：步骤 11 完成 — 自我验证闭环
 
 **完成了什么：** Agent 能理解命令成败（exit code），实现"改代码 → 跑测试 → 看失败 → 修复 → 再测"的闭环。
