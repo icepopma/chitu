@@ -33,7 +33,7 @@ export class ThreadStore {
     return JSON.parse(raw) as Thread
   }
 
-  /** 列出所有 Thread（摘要信息) */
+  /** 列出所有 Thread（摘要信息)，自动清理空线程 */
   async list(): Promise<Array<{ id: string; title: string; updatedAt: number }>> {
     if (!existsSync(this.dataDir)) return []
 
@@ -45,6 +45,11 @@ export class ThreadStore {
       try {
         const raw = await readFile(`${this.dataDir}/${file}`, 'utf-8')
         const data = JSON.parse(raw) as Thread
+        // 清理没有消息的空线程
+        if (!data.items || data.items.length === 0) {
+          await unlink(`${this.dataDir}/${file}`)
+          continue
+        }
         threads.push({
           id: data.id,
           title: data.title || 'Untitled',

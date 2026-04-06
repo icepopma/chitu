@@ -25,6 +25,7 @@ interface AppState {
   setThreads: (threads: ThreadSummary[]) => void
   addThread: (thread: ThreadSummary) => void
   selectThread: (id: string | null) => void
+  removeThread: (id: string) => void
   updateThreadTitle: (id: string, title: string) => void
   setItems: (items: Item[]) => void
   addItem: (item: Item) => void
@@ -48,6 +49,10 @@ export const useAppStore = create<AppState>()((set) => ({
   setThreads: (threads) => set({ threads }),
   addThread: (thread) => set((s) => ({ threads: [thread, ...s.threads] })),
   selectThread: (id) => set({ currentThreadId: id, items: [] }),
+  removeThread: (id) => set((s) => ({
+    threads: s.threads.filter((t) => t.id !== id),
+    currentThreadId: s.currentThreadId === id ? null : s.currentThreadId,
+  })),
   updateThreadTitle: (id, title) => set((s) => ({
     threads: s.threads.map((t) => t.id === id ? { ...t, title } : t),
   })),

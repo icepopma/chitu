@@ -57,7 +57,11 @@ function ensureConnected(url: string) {
       const result = await sendRequest<{ threads: any[] }>('thread/list')
       if (result?.threads) {
         const { setThreads } = useAppStore.getState()
-        setThreads(result.threads.map((t: any) => ({ id: t.id, title: t.title || '新对话', updatedAt: t.updatedAt || 0 })))
+        setThreads(result.threads.map((t: any) => ({
+          id: t.id,
+          title: t.title || '新对话',
+          updatedAt: t.updatedAt || 0,
+        })))
       }
     } catch (err) {
       console.error('[ws] 初始化失败:', err)
@@ -112,8 +116,8 @@ export function useChituSocket(options?: { url?: string }) {
   }, [])
 
   const {
-    addThread, selectThread, clearItems, setTurnStatus,
-    addItem, updateItem, setItems,
+    addThread, removeThread, selectThread, clearItems, setTurnStatus,
+    addItem, updateItem, setItems, setThreads,
     setPendingApproval, updateThreadTitle,
     currentThreadId, threads,
   } = useAppStore()
@@ -155,7 +159,7 @@ export function useChituSocket(options?: { url?: string }) {
           break
       }
     }
-  }, [addThread, setTurnStatus, addItem, updateItem])
+  }, [addThread, setTurnStatus, addItem, updateItem, removeThread])
 
   const connect = useCallback(() => ensureConnected(url), [url])
 
@@ -183,15 +187,26 @@ export function useChituSocket(options?: { url?: string }) {
 
     // 首次发消息时，用消息内容更新线程标题
     const thread = threads.find((t) => t.id === threadId)
-    if (thread && thread.title === '新对话') {
+    if (thread && (thread.title === '新对话' || thread.title === 'Untitled')) {
       const title = message.length > 30 ? message.slice(0, 30) + '...' : message
       updateThreadTitle(threadId, title)
+      // 持久化到服务器
+      sendRequest('thread/rename', { threadId, title }).catch(() => {})
     }
 
     clearItems()
     setTurnStatus('in_progress')
     await sendRequest('turn/start', { threadId, message })
   }, [clearItems, setTurnStatus, updateThreadTitle, threads])
+
+  const deleteThread = useCallback(async (threadId: string) => {
+    try {
+      await sendRequest('thread/delete', { threadId })
+      removeThread(threadId)
+    } catch (err) {
+      console.error('[ws] 删除线程失败:', err)
+    }
+  }, [removeThread])
 
   const interruptTurn = useCallback(async () => {
     const threadId = currentThreadIdRef.current
@@ -211,5 +226,5 @@ export function useChituSocket(options?: { url?: string }) {
     connect()
   }, [connect])
 
-  return { connect, createThread, resumeThread, sendMessage, interruptTurn, respondApproval, connected, initialized }
+  return { connect, createThread, deleteThread, resumeThread, sendMessage, interruptTurn, respondApproval, connected, initialized }
 }

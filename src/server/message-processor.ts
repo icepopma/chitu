@@ -88,6 +88,10 @@ export class MessageProcessor {
           return await this.handleThreadResume(ws, reqId, params)
         case 'thread/archive':
           return await this.handleThreadArchive(ws, reqId, params)
+        case 'thread/delete':
+          return await this.handleThreadDelete(ws, reqId, params)
+        case 'thread/rename':
+          return await this.handleThreadRename(ws, reqId, params)
         case 'turn/start':
           return await this.handleTurnStart(ws, reqId, params)
         case 'turn/interrupt':
@@ -145,6 +149,27 @@ export class MessageProcessor {
       return
     }
     await this.manager.archive(threadId)
+    this.send(ws, createResponse(id, {}))
+  }
+
+  private async handleThreadDelete(ws: WebSocket, id: number | string, params?: Record<string, unknown>): Promise<void> {
+    const threadId = params?.threadId as string
+    if (!threadId) {
+      this.send(ws, createError(id, INVALID_PARAMS, 'Missing threadId'))
+      return
+    }
+    await this.manager.deleteThread(threadId)
+    this.send(ws, createResponse(id, {}))
+  }
+
+  private async handleThreadRename(ws: WebSocket, id: number | string, params?: Record<string, unknown>): Promise<void> {
+    const threadId = params?.threadId as string
+    const title = params?.title as string
+    if (!threadId || !title) {
+      this.send(ws, createError(id, INVALID_PARAMS, 'Missing threadId or title'))
+      return
+    }
+    await this.manager.renameThread(threadId, title)
     this.send(ws, createResponse(id, {}))
   }
 

@@ -41,6 +41,7 @@ export interface ThreadSummary {
   id: string
   title: string
   updatedAt: number
+  itemCount?: number
 }
 
 /** JSON-RPC 通知的 params 中的 item（可能只有部分字段） */

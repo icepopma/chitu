@@ -1,16 +1,24 @@
 import { useAppStore } from '../lib/store'
 import { useChituSocket } from '../hooks/useChituSocket'
-import { MessageSquare, Plus, Wifi, WifiOff } from 'lucide-react'
+import { MessageSquare, Plus, Minus, Trash2, Wifi, WifiOff } from 'lucide-react'
 import { cn } from '../lib/utils'
+import { useState } from 'react'
 
 export function Sidebar() {
   const { threads, currentThreadId } = useAppStore()
-  const { createThread, resumeThread, connected } = useChituSocket()
+  const { createThread, deleteThread, resumeThread, connected } = useChituSocket()
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const handleSelect = async (id: string) => {
+    if (deletingId) return
     if (id !== currentThreadId) {
       await resumeThread(id)
     }
+  }
+
+  const handleDelete = async (id: string) => {
+    await deleteThread(id)
+    setDeletingId(null)
   }
 
   return (
@@ -33,17 +41,32 @@ export function Sidebar() {
           对话列表
         </div>
         {threads.map((thread) => (
-          <button
+          <div
             key={thread.id}
-            onClick={() => handleSelect(thread.id)}
             className={cn(
-              'w-full flex items-center gap-2 px-2 py-1.5 rounded text-left text-sm hover:bg-[#2a2a2a] transition-colors',
-              thread.id === currentThreadId ? 'bg-[#2a2a2a] text-white' : 'text-[#888] hover:text-white',
+              'group flex items-center rounded text-sm transition-colors',
+              thread.id === currentThreadId ? 'bg-[#2a2a2a]' : 'hover:bg-[#2a2a2a]',
+              deletingId === thread.id && 'ring-1 ring-red-500/50',
             )}
           >
-            <MessageSquare className="w-4 h-4 shrink-0" />
-            <span className="truncate">{thread.title}</span>
-          </button>
+            <button
+              onClick={() => handleSelect(thread.id)}
+              className={cn(
+                'flex-1 flex items-center gap-2 px-2 py-1.5 text-left transition-colors',
+                thread.id === currentThreadId ? 'text-white' : 'text-[#888] hover:text-white',
+              )}
+            >
+              <MessageSquare className="w-4 h-4 shrink-0" />
+              <span className="truncate">{thread.title}</span>
+            </button>
+            <button
+              onClick={() => handleDelete(thread.id)}
+              className="px-2 py-1.5 text-[#555] hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+              title="删除对话"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
         ))}
         {threads.length === 0 && (
           <div className="px-2 py-8 text-center text-xs text-[#888]">
@@ -52,16 +75,26 @@ export function Sidebar() {
         )}
       </div>
 
-      {/* New Thread Button */}
-      <div className="p-2 border-t border-[#2a2a2a]">
+      {/* New / Delete Thread Buttons */}
+      <div className="p-2 border-t border-[#2a2a2a] flex gap-2">
         <button
           onClick={() => createThread('新对话')}
           disabled={!connected}
-          className="w-full flex items-center gap-2 px-3 py-2 rounded bg-[#5865f2] hover:bg-[#4752c4] text-white text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded bg-[#5865f2] hover:bg-[#4752c4] text-white text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Plus className="w-4 h-4" />
-          新建对话
+          新建
         </button>
+        {currentThreadId && (
+          <button
+            onClick={() => handleDelete(currentThreadId)}
+            disabled={!connected}
+            className="flex items-center justify-center px-3 py-2 rounded bg-[#4a4a4a] hover:bg-red-600 text-white text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            title="删除当前对话"
+          >
+            <Minus className="w-4 h-4" />
+          </button>
+        )}
       </div>
     </div>
   )

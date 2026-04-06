@@ -114,6 +114,16 @@ export class ThreadManager {
     await this.store.delete(threadId)
   }
 
+  /** 重命名线程 */
+  async renameThread(threadId: string, title: string): Promise<void> {
+    const thread = await this.store.load(threadId)
+    if (thread) {
+      thread.title = title
+      thread.updatedAt = Date.now()
+      await this.store.save(thread)
+    }
+  }
+
   /**
    * runTurn — 核心方法
    *
@@ -147,7 +157,12 @@ export class ThreadManager {
     }
     this.emit({ type: 'turn/started', turn, thread })
 
-    // 2. 添加 user_message Item
+    // 2. 自动重命名：标题为默认值时用首条消息更新
+    if (thread.title === '新对话' || thread.title === 'Untitled') {
+      thread.title = userInput.length > 30 ? userInput.slice(0, 30) + '...' : userInput
+    }
+
+    // 3. 添加 user_message Item
     const userItem = this.addItem(thread, {
       id: randomUUID(),
       type: 'user_message',
