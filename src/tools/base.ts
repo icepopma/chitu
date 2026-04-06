@@ -11,6 +11,7 @@
 export interface ToolResult {
   content: string      // 结果文本
   isError?: boolean    // 是否出错
+  exitCode?: number    // 退出码（exec 工具专用，0=成功，非0=失败）
 }
 
 /** 工具接口 — 所有工具必须实现 */

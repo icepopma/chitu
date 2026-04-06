@@ -5,3 +5,19 @@ dist/
 data/
 chitu-data/
 test-data/
+
+# macOS
+.DS_Store
+
+# IDE / Agent 配置
+.claude/
+.agents/
+.windsurf/
+skills-lock.json
+
+# 测试产物
+mini-chitu/
+test-e2e-*.ts
+
+# 博客草稿（含大图片）
+blog/

@@ -22,6 +22,8 @@ import { LLMClient } from '../llm/client.js'
 import type { Tool } from '../tools/base.js'
 import { toolToDefinition } from '../tools/base.js'
 import { buildProjectContext } from '../context.js'
+import { truncateOutput } from '../utils/truncate.js'
+import { compactMessages } from './compact.js'
 
 // ===== 系统提示（对齐 Codex codex-rs/core/prompt.md） =====
 
@@ -69,10 +71,30 @@ You are autonomous and proactive. Once a user gives you direction:
 - If you find yourself repeatedly reading or editing the same files without clear progress, stop and summarize concisely with targeted clarification questions.
 
 # Validating work
-- After making code changes, you MUST run relevant tests to verify correctness.
-- If tests fail, analyze the error and fix it. Do not skip or ignore failures.
-- Before your final response, confirm all changes pass verification.
-- Validation commands to prefer: \`npm test\`, \`npm run build\`, \`npx tsc --noEmit\`
+
+## Exit codes
+Every command you run returns an exit code:
+- **exit code 0** = success — the command completed without errors
+- **exit code non-zero** = failure — something went wrong, you MUST fix it
+
+## Verification loop (MANDATORY)
+After making ANY code changes, you MUST follow this loop:
+1. **Run tests** — Use \`exec\` to run relevant tests (\`npm test\`, \`npx tsc --noEmit\`, etc.)
+2. **Check exit code** — If exit code is 0, tests pass → proceed to next step
+3. **If exit code is non-zero** — This means FAILURES:
+   - Read the error output carefully (stdout + stderr)
+   - Identify the root cause of the failure
+   - Fix the code that caused the failure
+   - Re-run the tests
+   - Repeat until exit code is 0
+4. **Never skip failures** — Do not move on if tests are still failing
+5. **Final confirmation** — Before your final response, confirm ALL tests pass with exit code 0
+
+## Common validation commands
+- \`npx tsc --noEmit\` — TypeScript type checking
+- \`npm test\` or \`npm run test\` — Run test suite
+- \`npm run build\` — Build the project
+- Choose the command appropriate for the project's test framework
 
 # Tool guidelines
 - Prefer dedicated tools over raw shell commands: use \`read_file\` over \`cat\`, \`write_file\` over \`echo >\`.
@@ -115,6 +137,7 @@ export interface AgentStep {
     args: Record<string, unknown>
     result: string
     isError: boolean
+    exitCode?: number
   }>
 }
 
@@ -217,11 +240,24 @@ export async function runAgentLoop(
       }
     }
 
-    // 4a. 调用 LLM
+    // 4a. 上下文压缩检查（对齐 Codex compact.rs）
+    // 每轮开始前检查 messages 总 token，超阈值则压缩
+    const compactResult = await compactMessages(messages, task, {
+      compactThreshold: 80_000,
+      recentBudget: 20_000,
+      chatFn: (msgs) => client.chat(msgs),
+    })
+    if (compactResult.compacted) {
+      // 用压缩后的 messages 替换原来的
+      messages.length = 0
+      messages.push(...compactResult.messages)
+    }
+
+    // 4b. 调用 LLM
     const response = await client.chat(messages, toolDefinitions)
     totalTokens += response.usage.total_tokens
 
-    // 4b. 如果没有工具调用 → 任务完成
+    // 4c. 如果没有工具调用 → 任务完成
     if (!response.tool_calls || response.tool_calls.length === 0) {
       const step: AgentStep = {
         iteration: i + 1,
@@ -239,7 +275,7 @@ export async function runAgentLoop(
       }
     }
 
-    // 4c. 有工具调用 → 执行工具
+    // 4d. 有工具调用 → 执行工具
     const step: AgentStep = {
       iteration: i + 1,
       messages,
@@ -273,18 +309,22 @@ export async function runAgentLoop(
 
       let resultContent: string
       let isError: boolean
+      let exitCode: number | undefined
 
       if (!tool) {
         resultContent = `错误：未知工具 "${toolName}"`
         isError = true
+        exitCode = 1
       } else {
         try {
           const result = await tool.execute(args)
           resultContent = result.content
           isError = result.isError || false
+          exitCode = result.exitCode
         } catch (err: any) {
           resultContent = `工具执行出错: ${err.message}`
           isError = true
+          exitCode = 1
         }
       }
 
@@ -293,12 +333,16 @@ export async function runAgentLoop(
         args,
         result: resultContent,
         isError,
+        exitCode,
       })
+
+      // 截断后加入历史（防止工具输出撑爆上下文）
+      const truncated = truncateOutput(resultContent)
 
       // 把工具结果加入历史（role = 'tool'）
       messages.push({
         role: 'tool',
-        content: resultContent,
+        content: truncated,
         tool_call_id: tc.id,
       })
     }

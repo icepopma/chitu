@@ -321,29 +321,29 @@ Client                                   Server
   - **修改文件：** `src/agent/loop.ts`, `src/context.ts`（新建）, `AGENTS.md`（新建）, `src/thread/manager.ts`
   - **验证：** ✅ 6 项测试通过 — findProjectRoot, loadAgentsMd, formatAgentsMdInjection, buildEnvironmentContext, buildProjectContext, buildInitialMessages
 
-- [ ] **第 9 步：执行环境优化（输出边界）**
-  - [ ] 9.1 实现 `truncateOutput(content, maxTokens)` — 保留前半+后半，中间截断
-  - [ ] 9.2 改造 `exec.ts` — 加 `NO_COLOR=1`, `TERM=dumb`, `PAGER=cat` 环境变量
-  - [ ] 9.3 改造 `agent/loop.ts` — 工具结果进入 messages 前先截断
-  - [ ] 9.4 默认每个工具结果上限 10K token（≈40KB）
+- [x] **第 9 步：执行环境优化（输出边界）** ✅
+  - [x] 9.1 实现 `truncateOutput(content, maxTokens)` — HeadTailBuffer 策略：头尾保留，中间截断
+  - [x] 9.2 改造 `exec.ts` — 加 `NO_COLOR=1`, `TERM=dumb`, `PAGER=cat`, `GIT_PAGER=cat` 环境变量
+  - [x] 9.3 改造 `agent/loop.ts` — 工具结果进入 messages 前调用 `truncateOutput()` 截断
+  - [x] 9.4 默认每个工具结果上限 10K token（≈40KB），超时特殊提示
   - **修改文件：** `src/tools/exec.ts`, `src/utils/truncate.ts`（新建）, `src/agent/loop.ts`
-  - **验证：** 执行大输出命令，进入 messages 的内容被正确截断
+  - **验证：** ✅ 4 项测试通过 — 短内容透传、长内容截断、token 计数、边界值
 
-- [ ] **第 10 步：上下文压缩**
-  - [ ] 10.1 Token 计数估算（`approxTokenCount(text)` — `text.length / 4`）
-  - [ ] 10.2 在 Agent Loop 每轮开始前检查 token 用量
-  - [ ] 10.3 超阈值时触发压缩：LLM 生成历史摘要 + 保留最近 20K token 用户消息
-  - [ ] 10.4 压缩后重新注入 AGENTS.md（初始上下文注入）
-  - **修改文件：** `src/utils/token.ts`（新建）, `src/agent/compact.ts`（新建）, `src/agent/loop.ts`
-  - **验证：** 给 Agent 10+ 轮任务，观察压缩触发后 Agent 继续正常工作
+- [x] **第 10 步：上下文压缩** ✅
+  - [x] 10.1 Token 计数估算 — `src/utils/token.ts`：`approxTokenCount()` + `estimateMessagesTokens()`
+  - [x] 10.2 Agent Loop 每轮开始前检查 messages 总 token，超 80K 阈值触发压缩
+  - [x] 10.3 超阈值时：LLM 生成早期历史摘要 + 保留最近 20K token 消息 + 保留初始上下文
+  - [x] 10.4 压缩后初始上下文（system + AGENTS.md + env + task）保留不变
+  - **修改文件：** `src/utils/token.ts`（新建）, `src/agent/compact.ts`（新建）, `src/agent/loop.ts`, `src/utils/truncate.ts`（refactor）
+  - **验证：** ✅ 6 项测试通过 — token 计数、消息 token 估算、截断 refactor、压缩检测（短/长）
 
-- [ ] **第 11 步：自我验证闭环**
-  - [ ] 11.1 增强 system prompt，加入验证指令（修改后必须跑测试，失败要修正）
-  - [ ] 11.2 改造 `exec.ts` — 结构化返回（stdout/stderr/exitCode 分离）
-  - [ ] 11.3 增强 `Item` 类型 — tool_result 加入 `exitCode` 字段
-  - [ ] 11.4 Agent 理解退出码语义：0=成功，非0=失败需要修复
-  - **修改文件：** `src/types.ts`, `src/tools/exec.ts`, `src/agent/loop.ts`
-  - **验证：** Agent 能：执行测试 → 看失败 → 修改代码 → 再测 → 通过
+- [x] **第 11 步：自我验证闭环** ✅
+  - [x] 11.1 增强系统提示 — 退出码语义 + 验证闭环流程（exit code 0=成功，非0=失败必须修复）
+  - [x] 11.2 改造 `exec.ts` — 结构化返回 `[exit code: N]` + `[stdout]` + `[stderr]` 分离
+  - [x] 11.3 增强类型 — `ToolResult` 加 `exitCode`，`Item` 加 `exitCode`
+  - [x] 11.4 穿透 exitCode — Agent Loop → toolResults → ThreadManager Items 全链路传递
+  - **修改文件：** `src/tools/base.ts`, `src/tools/exec.ts`, `src/types.ts`, `src/agent/loop.ts`, `src/thread/manager.ts`
+  - **验证：** ✅ 4 项测试通过 — 成功命令 exitCode=0、失败命令 exitCode≠0、无参数、环境变量生效
 
 - [ ] **第 12 步：安全与审批**
   - [ ] 12.1 定义命令分类：只读命令自动批准，写入命令需确认
@@ -380,6 +380,87 @@ Client                                   Server
 - 没有 developer-role 分离（GLM API 无此角色，非遗漏）
 
 ## 里程碑记录
+
+### 2026-04-06：步骤 11 完成 — 自我验证闭环
+
+**完成了什么：** Agent 能理解命令成败（exit code），实现"改代码 → 跑测试 → 看失败 → 修复 → 再测"的闭环。
+
+**为什么重要：** 没有 exitCode 语义，Agent 无法区分命令成功还是失败，自我验证不可能实现。这是 Codex reproduce → fix → verify 闭环的基础。
+
+**怎么做的：**
+- `src/tools/base.ts` — `ToolResult` 加 `exitCode` 字段
+- `src/types.ts` — `Item` 加 `exitCode` 字段
+- `src/tools/exec.ts`（重写）— 结构化返回：
+  - `[exit code: N]` 标记退出码
+  - `[stdout]` / `[stderr]` 分离输出
+  - `isError` 由 `exitCode !== 0` 决定（不再靠 error 对象有无）
+  - 超时特殊标记
+- `src/agent/loop.ts` — 系统提示强化验证闭环指令（5 步验证循环）+ `AgentStep.toolResults` 携带 `exitCode`
+- `src/thread/manager.ts` — tool_result Items 记录 `exitCode`
+- 验证 4/4 通过
+
+**系统提示新增内容（验证闭环）：**
+```
+# Validating work
+## Exit codes
+- exit code 0 = success
+- exit code non-zero = failure → MUST fix
+
+## Verification loop (MANDATORY)
+1. Run tests
+2. Check exit code
+3. If non-zero → read error → fix → re-run
+4. Never skip failures
+5. Final confirmation — ALL tests pass with exit code 0
+```
+
+**数据流：**
+```
+exec tool → ToolResult { exitCode, content, isError }
+  → AgentStep.toolResults [{ exitCode, ... }]
+    → Item { exitCode, ... } (持久化到 Thread)
+      → 前端展示（可按 exitCode 着色）
+```
+
+### 2026-04-06：步骤 10 完成 — 上下文压缩
+
+**完成了什么：** Agent 能自动检测上下文溢出，通过 LLM 生成摘要压缩历史，支持 10+ 轮长任务。
+
+**怎么做的：**
+- `src/utils/token.ts`（新建）— token 估算模块
+  - `approxTokenCount(text)` — 保守估算 `text.length / 3`
+  - `estimateMessagesTokens(messages)` — 累加所有消息的 content + tool_calls 估算值
+- `src/agent/compact.ts`（新建）— 上下文压缩引擎（对齐 Codex compact.rs）
+  - `needsCompact()` — 检查 messages 是否超过阈值（80K token）
+  - `compactMessages()` — 压缩流程：分离初始上下文 → LLM 摘要早期历史 → 保留最近 20K token → 重新组装
+  - 摘要系统提示：保留关键决策/文件修改/错误，丢弃冗余工具输出
+- `src/agent/loop.ts`（集成）— 每轮循环开始前调用 `compactMessages()`
+- `src/utils/truncate.ts`（refactor）— `approxTokenCount` 提取到 `token.ts`，truncate.ts 改为 import
+- 验证 6/6 通过
+
+**压缩策略（对齐 Codex compact.rs）：**
+```
+原始 messages:
+  [system] [AGENTS.md] [env] [user task] | [assistant+tool x 30 轮]
+                                         ↓ 超过 80K token 阈值
+压缩后 messages:
+  [system] [AGENTS.md] [env] [user task] | [摘要] [assistant确认] | [最近 20K token 消息]
+```
+
+### 2026-04-06：步骤 9 完成 — 执行环境优化（输出边界）
+
+**完成了什么：** 工具输出截断 + 执行环境变量抑制颜色/分页，防止上下文窗口被工具输出撑爆。
+
+**怎么做的：**
+- `src/utils/truncate.ts`（新建）— HeadTailBuffer 截断策略
+  - `approxTokenCount(text)` — 保守估算 `text.length / 3`
+  - `truncateOutput(content, maxTokens)` — 在预算内原样返回，超出则保留头尾、中间截断
+  - 默认 10K token 上限（≈40KB）
+- `src/tools/exec.ts`（改造）— 环境变量 + 结构化输出
+  - 加 `NO_COLOR=1`, `TERM=dumb`, `PAGER=cat`, `GIT_PAGER=cat` 环境变量
+  - 超时命令特殊提示 `[命令超时，30秒内未完成]`
+- `src/agent/loop.ts`（1 行改动）— 工具结果进 messages 前调 `truncateOutput()`
+- 验证 4/4 通过
 
 ### 2026-04-05：步骤 8 完成 — AGENTS.md 项目地图 + 增强系统提示
 

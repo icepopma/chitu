@@ -202,6 +202,7 @@ export class ThreadManager {
                 content: tr.result,
                 toolName: tr.toolName,
                 isError: tr.isError,
+                exitCode: tr.exitCode,
                 startedAt: Date.now(),
                 completedAt: Date.now(),
               })

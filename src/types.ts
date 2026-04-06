@@ -53,6 +53,7 @@ export interface Item {
   toolArgs?: Record<string, unknown>
   toolCallId?: string
   isError?: boolean
+  exitCode?: number    // 工具退出码（0=成功，非0=失败）
   // 时间戳
   startedAt: number
   completedAt?: number
