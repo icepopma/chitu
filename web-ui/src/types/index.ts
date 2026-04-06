@@ -56,3 +56,12 @@ export interface PartialItem {
   startedAt?: number
   completedAt?: number
 }
+
+/** 审批请求 */
+export interface ApprovalRequest {
+  id: string
+  toolName: string
+  command: string
+  riskLevel: 'read' | 'write' | 'dangerous'
+  threadId: string
+}

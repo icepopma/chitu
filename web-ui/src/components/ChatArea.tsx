@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useAppStore } from '../lib/store'
 import { MessageItem } from './MessageItem'
 import { WelcomeScreen } from './WelcomeScreen'
+import { ApprovalBanner } from './ApprovalBanner'
 import { Loader2 } from 'lucide-react'
 
 export function ChatArea() {
@@ -48,6 +49,9 @@ export function ChatArea() {
           <span className="ml-3 text-xs text-[#da373c]">已中断</span>
         )}
       </div>
+
+      {/* 审批横幅 */}
+      <ApprovalBanner />
 
       {/* Messages */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto py-4">

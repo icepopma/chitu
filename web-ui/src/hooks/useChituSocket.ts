@@ -114,6 +114,7 @@ export function useChituSocket(options?: { url?: string }) {
   const {
     addThread, selectThread, clearItems, setTurnStatus,
     addItem, updateItem, setItems,
+    setPendingApproval,
     currentThreadId,
   } = useAppStore()
 
@@ -140,6 +141,17 @@ export function useChituSocket(options?: { url?: string }) {
           break
         case 'turn/completed':
           if (params?.turn) setTurnStatus(params.turn.status || 'completed')
+          break
+        case 'approval/requested':
+          if (params) {
+            setPendingApproval({
+              id: params.id,
+              toolName: params.toolName || 'exec',
+              command: params.command || '',
+              riskLevel: params.riskLevel || 'write',
+              threadId: params.threadId || '',
+            })
+          }
           break
       }
     }
@@ -180,7 +192,13 @@ export function useChituSocket(options?: { url?: string }) {
     setTurnStatus('idle')
   }, [setTurnStatus])
 
+  /** 响应审批请求 */
+  const respondApproval = useCallback(async (approvalId: string, approved: boolean) => {
+    await sendRequest('approval/respond', { id: approvalId, approved })
+    setPendingApproval(null)
+  }, [setPendingApproval])
+
   useEffect(() => { connect() }, [connect])
 
-  return { connect, createThread, resumeThread, sendMessage, interruptTurn, connected, initialized }
+  return { connect, createThread, resumeThread, sendMessage, interruptTurn, respondApproval, connected, initialized }
 }

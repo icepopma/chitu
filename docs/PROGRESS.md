@@ -353,7 +353,7 @@ Client                                   Server
   - [x] 12.5 MessageProcessor 审批流 — `approval/requested` 通知 + `approval/respond` JSON-RPC 方法
   - [x] 12.6 超时机制 — 30 秒无响应自动拒绝
   - **修改文件：** `src/tools/policy.ts`（新建）, `src/tools/base.ts`, `src/tools/exec.ts`, `src/agent/loop.ts`, `src/types.ts`, `src/server/message-processor.ts`
-  - **验证：** ✅ 策略分类通过（ls=read, rm=dangerous, mkdir=write）
+  - **验证：** ✅ 策略分类通过（ls=read, rm=dangerous, mkdir=write）+ 端到端审批闭环验证通过（Playwright 测试：rm -rf 触发审批 → ApprovalBanner 显示 → 用户拒绝 → Agent 优雅处理）
 
 - [ ] **第 13 步：高级能力（远期）**
   - [ ] 13.1 会话事件流记录（Rollout Recording） — JSONL 记录 + resume/fork

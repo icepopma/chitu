@@ -176,6 +176,7 @@ export class MessageProcessor {
     // 后台运行 Agent Loop
     this.manager.runTurn(threadId, message, {
       signal: controller.signal,
+      onApprovalNeeded: this.createApprovalCallback(threadId),
     }).catch((err) => {
       // runTurn 内部已处理错误（emit turn/completed with failed）
       // 这里只清理 AbortController

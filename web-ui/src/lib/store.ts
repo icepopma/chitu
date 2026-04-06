@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Item, ThreadSummary, TurnStatus } from '../types'
+import type { Item, ThreadSummary, TurnStatus, ApprovalRequest } from '../types'
 
 interface AppState {
   // 连接
@@ -16,6 +16,9 @@ interface AppState {
   // Turn
   turnStatus: TurnStatus | 'idle'
 
+  // 审批
+  pendingApproval: ApprovalRequest | null
+
   // Actions
   setConnected: (v: boolean) => void
   setInitialized: (v: boolean) => void
@@ -27,6 +30,7 @@ interface AppState {
   updateItem: (itemId: string, update: Partial<Item>) => void
   clearItems: () => void
   setTurnStatus: (status: TurnStatus | 'idle') => void
+  setPendingApproval: (req: ApprovalRequest | null) => void
 }
 
 export const useAppStore = create<AppState>()((set) => ({
@@ -36,6 +40,7 @@ export const useAppStore = create<AppState>()((set) => ({
   currentThreadId: null,
   items: [],
   turnStatus: 'idle',
+  pendingApproval: null,
 
   setConnected: (v) => set({ connected: v }),
   setInitialized: (v) => set({ initialized: v }),
@@ -49,4 +54,5 @@ export const useAppStore = create<AppState>()((set) => ({
   })),
   clearItems: () => set({ items: [] }),
   setTurnStatus: (status) => set({ turnStatus: status }),
+  setPendingApproval: (req) => set({ pendingApproval: req }),
 }))

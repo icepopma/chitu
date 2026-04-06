@@ -26,6 +26,8 @@ export interface RunTurnOptions {
   maxIterations?: number
   /** 取消信号 */
   signal?: AbortSignal
+  /** 审批回调 — 高风险命令需要用户确认时调用 */
+  onApprovalNeeded?: (toolName: string, args: Record<string, unknown>) => Promise<boolean>
 }
 
 /** runTurn 的返回结果 */
@@ -174,6 +176,7 @@ export class ThreadManager {
         systemPrompt: options?.systemPrompt || buildSystemPrompt(),
         maxIterations: options?.maxIterations || 50,
         signal: options?.signal,
+        onApprovalNeeded: options?.onApprovalNeeded,
         onStep: (step) => {
           if (step.toolCalls) {
             // Agent 调用了工具 → 添加 tool_call Items
