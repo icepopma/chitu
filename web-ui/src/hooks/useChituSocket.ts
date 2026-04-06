@@ -114,8 +114,8 @@ export function useChituSocket(options?: { url?: string }) {
   const {
     addThread, selectThread, clearItems, setTurnStatus,
     addItem, updateItem, setItems,
-    setPendingApproval,
-    currentThreadId,
+    setPendingApproval, updateThreadTitle,
+    currentThreadId, threads,
   } = useAppStore()
 
   const currentThreadIdRef = useRef(currentThreadId)
@@ -180,10 +180,18 @@ export function useChituSocket(options?: { url?: string }) {
   const sendMessage = useCallback(async (message: string) => {
     const threadId = currentThreadIdRef.current
     if (!threadId) throw new Error('没有选中的线程')
+
+    // 首次发消息时，用消息内容更新线程标题
+    const thread = threads.find((t) => t.id === threadId)
+    if (thread && thread.title === '新对话') {
+    const title = message.length > 30 ? message.slice(0, 30) + '...' : message
+    updateThreadTitle(threadId, title)
+    }
+
     clearItems()
     setTurnStatus('in_progress')
     await sendRequest('turn/start', { threadId, message })
-  }, [clearItems, setTurnStatus])
+  }, [clearItems, setTurnStatus, updateThreadTitle, threads])
 
   const interruptTurn = useCallback(async () => {
     const threadId = currentThreadIdRef.current
