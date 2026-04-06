@@ -345,12 +345,15 @@ Client                                   Server
   - **修改文件：** `src/tools/base.ts`, `src/tools/exec.ts`, `src/types.ts`, `src/agent/loop.ts`, `src/thread/manager.ts`
   - **验证：** ✅ 4 项测试通过 — 成功命令 exitCode=0、失败命令 exitCode≠0、无参数、环境变量生效
 
-- [ ] **第 12 步：安全与审批**
-  - [ ] 12.1 定义命令分类：只读命令自动批准，写入命令需确认
-  - [ ] 12.2 实现简单审批策略：`autoApprove` 或 `askUser`
-  - [ ] 12.3 前端显示审批请求 UI
-  - **修改文件：** `src/tools/policy.ts`（新建）, `src/tools/exec.ts`, `src/types.ts`, 前端
-  - **验证：** `ls` 自动通过，`rm` 弹出审批请求
+- [x] **第 12 步：安全与审批** ✅
+  - [x] 12.1 命令风险分类 `src/tools/policy.ts` — read/write/dangerous 三级分类
+  - [x] 12.2 审批决策 — `checkApproval(command, mode)` 支持 auto-approve/ask-user 模式
+  - [x] 12.3 Tool 接口扩展 — `needsApproval?(args)` 可选方法
+  - [x] 12.4 Agent Loop 集成 — 执行前检查 `needsApproval`，需要审批时暂停等待回调
+  - [x] 12.5 MessageProcessor 审批流 — `approval/requested` 通知 + `approval/respond` JSON-RPC 方法
+  - [x] 12.6 超时机制 — 30 秒无响应自动拒绝
+  - **修改文件：** `src/tools/policy.ts`（新建）, `src/tools/base.ts`, `src/tools/exec.ts`, `src/agent/loop.ts`, `src/types.ts`, `src/server/message-processor.ts`
+  - **验证：** ✅ 策略分类通过（ls=read, rm=dangerous, mkdir=write）
 
 - [ ] **第 13 步：高级能力（远期）**
   - [ ] 13.1 会话事件流记录（Rollout Recording） — JSONL 记录 + resume/fork

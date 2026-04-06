@@ -16,6 +16,7 @@
 import type { WebSocket } from 'ws'
 import type { AppEvent, Thread, Item, Turn } from '../types.js'
 import { ThreadManager } from '../thread/manager.js'
+import { classifyCommand } from '../tools/policy.js'
 import {
   type JsonRpcRequest,
   createResponse,
@@ -35,6 +36,12 @@ export class MessageProcessor {
   private initialized = new WeakSet<WebSocket>()
   /** 活跃的 Turn：threadId → AbortController */
   private activeTurns = new Map<string, AbortController>()
+  /** 等待审批的请求：approvalId → { resolve, command, riskLevel } */
+  private pendingApprovals = new Map<string, {
+    resolve: (approved: boolean) => void
+    command: string
+    riskLevel: string
+  }>()
 
   constructor(manager: ThreadManager) {
     this.manager = manager
@@ -85,6 +92,8 @@ export class MessageProcessor {
           return await this.handleTurnStart(ws, reqId, params)
         case 'turn/interrupt':
           return await this.handleTurnInterrupt(ws, reqId, params)
+        case 'approval/respond':
+          return await this.handleApprovalRespond(ws, reqId, params)
         default:
           this.send(ws, createError(reqId, METHOD_NOT_FOUND, `Method not found: ${method}`))
       }
@@ -192,6 +201,74 @@ export class MessageProcessor {
     this.send(ws, createResponse(id, { interrupted: true }))
   }
 
+  /**
+   * 创建审批回调（给 Agent Loop 用）
+   *
+   * 当 Agent 需要审批时：
+   * 1. 生成唯一 approvalId
+   * 2. 通过 JSON-RPC 通知推给前端
+   * 3. 返回 Promise，等待前端通过 approval/respond 响应
+   * 4. 30 秒超时自动拒绝
+   */
+  createApprovalCallback(threadId: string): (toolName: string, args: Record<string, unknown>) => Promise<boolean> {
+    return async (toolName: string, args: Record<string, unknown>): Promise<boolean> => {
+      const approvalId = `approval-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      const command = toolName === 'exec' ? (args.command as string) : JSON.stringify(args)
+      const riskLevel = toolName === 'exec' ? classifyCommand(command) : 'write'
+
+      // 广播审批通知给所有客户端
+      const notifData = JSON.stringify(createNotification('approval/requested', {
+        id: approvalId,
+        toolName,
+        command,
+        riskLevel,
+        threadId,
+      }))
+      for (const client of this.clients) {
+        if (client.readyState === 1) client.send(notifData)
+      }
+
+      // 返回 Promise，等待前端响应
+      return new Promise<boolean>((resolve) => {
+        // 30 秒超时自动拒绝
+        const timer = setTimeout(() => {
+          this.pendingApprovals.delete(approvalId)
+          resolve(false)
+        }, 30_000)
+
+        this.pendingApprovals.set(approvalId, {
+          resolve: (approved: boolean) => {
+            clearTimeout(timer)
+            resolve(approved)
+          },
+          command,
+          riskLevel,
+        })
+      })
+    }
+  }
+
+  /** 处理 approval/respond — 前端回复审批请求 */
+  private handleApprovalRespond(ws: WebSocket, id: number | string, params?: Record<string, unknown>): void {
+    const approvalId = params?.id as string
+    const approved = params?.approved as boolean
+
+    if (!approvalId) {
+      this.send(ws, createError(id, INVALID_PARAMS, 'Missing approval id'))
+      return
+    }
+
+    const pending = this.pendingApprovals.get(approvalId)
+    if (!pending) {
+      this.send(ws, createError(id, INVALID_PARAMS, `No pending approval for id ${approvalId}`))
+      return
+    }
+
+    this.pendingApprovals.delete(approvalId)
+    pending.resolve(approved)
+    this.send(ws, createResponse(id, { approved }))
+  }
+
   // ===== 事件广播 =====
 
   /** 把 AppEvent 转成 JSON-RPC 通知，推给所有已连接的客户端 */
@@ -226,5 +303,7 @@ function eventToParams(event: AppEvent): Record<string, unknown> {
       return { item: event.item }
     case 'item/completed':
       return { item: event.item }
+    case 'approval/requested':
+      return { id: event.id, command: event.command, riskLevel: event.riskLevel, thread: event.thread }
   }
 }

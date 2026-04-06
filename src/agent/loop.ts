@@ -119,6 +119,14 @@ export interface AgentLoopConfig {
   signal?: AbortSignal
   /** 每一步的回调（用于观察 Agent 在做什么） */
   onStep?: (step: AgentStep) => void
+  /**
+   * 审批回调 — 当工具需要用户确认时调用
+   *
+   * 返回 true = 批准执行
+   * 返回 false = 拒绝（Agent 收到拒绝消息）
+   * 不设置 = 全部自动批准（开发模式）
+   */
+  onApprovalNeeded?: (toolName: string, args: Record<string, unknown>) => Promise<boolean>
 }
 
 /** Agent 每一步的状态（用于观察和调试） */
@@ -316,6 +324,23 @@ export async function runAgentLoop(
         isError = true
         exitCode = 1
       } else {
+        // v12: 审批检查 — 高风险命令需要用户确认
+        if (tool.needsApproval?.(args)) {
+          if (config.onApprovalNeeded) {
+            const approved = await config.onApprovalNeeded(toolName, args)
+            if (!approved) {
+              resultContent = `用户拒绝了此操作：${toolName}(${JSON.stringify(args).slice(0, 100)})`
+              isError = true
+              exitCode = 1
+              toolResults.push({ toolName, args, result: resultContent, isError, exitCode })
+              const truncated = truncateOutput(resultContent)
+              messages.push({ role: 'tool', content: truncated, tool_call_id: tc.id })
+              continue  // 跳过执行，继续下一个工具
+            }
+          }
+          // 如果没有 onApprovalNeeded 回调，自动批准（开发模式）
+        }
+
         try {
           const result = await tool.execute(args)
           resultContent = result.content

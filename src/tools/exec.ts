@@ -4,25 +4,26 @@
  * 这是 Agent 最强大的工具。Codex 也靠它。
  * Agent 通过它来运行命令：ls, cat, npm test, git status...
  *
+ * v12 更新：集成审批策略
+ * - needsApproval() 根据命令风险等级决定是否需要用户确认
+ * - 只读命令（ls, git status）自动批准
+ * - 写入命令（rm, git push）需要用户确认
+ *
  * v11 更新：结构化返回 exitCode + stdout/stderr 分离
  * - Agent 通过 exitCode 判断命令成败：0=成功，非0=失败
- * - 这是自我验证闭环的关键：Agent 执行测试后看 exitCode，失败则修复
- *
- * 安全说明：
- * - 学习阶段不做严格沙盒，但设置了超时和输出长度限制
- * - 生产环境需要沙盒（Docker 容器等）
  */
 
 import { exec as childExec } from 'child_process'
 import type { Tool, ToolResult } from './base.js'
+import { classifyCommand } from './policy.js'
 
 /** exec 工具的环境变量，抑制颜色、分页、交互式提示 */
 const EXEC_ENV = {
-  NO_COLOR: '1',       // 禁用颜色输出（大多数工具尊重此变量）
-  TERM: 'dumb',        // 哑终端，禁用终端控制序列
-  PAGER: 'cat',        // 禁用分页器（git log 等会用 PAGER）
-  GIT_PAGER: 'cat',    // Git 专用分页器设置
-  NODE_OPTIONS: '',    // 清除可能导致问题的 Node 选项
+  NO_COLOR: '1',
+  TERM: 'dumb',
+  PAGER: 'cat',
+  GIT_PAGER: 'cat',
+  NODE_OPTIONS: '',
 }
 
 export const execTool: Tool = {
@@ -39,6 +40,14 @@ export const execTool: Tool = {
     required: ['command'],
   },
 
+  /** 判断命令是否需要用户审批 */
+  needsApproval(args: Record<string, unknown>): boolean {
+    const command = args.command as string
+    if (!command) return false
+    const riskLevel = classifyCommand(command)
+    return riskLevel !== 'read'
+  },
+
   async execute(args: Record<string, unknown>): Promise<ToolResult> {
     const command = args.command as string
     if (!command) {
@@ -49,8 +58,8 @@ export const execTool: Tool = {
       childExec(
         command,
         {
-          timeout: 30_000,        // 30 秒超时
-          maxBuffer: 1024 * 1024, // 最大 1MB 输出
+          timeout: 30_000,
+          maxBuffer: 1024 * 1024,
           shell: '/bin/bash',
           env: { ...process.env, ...EXEC_ENV },
         },
@@ -59,10 +68,8 @@ export const execTool: Tool = {
           const out = (stdout || '').trim()
           const err = (stderr || '').trim()
 
-          // 超时检测
           const timedOut = error ? !!(error as any).killed : false
 
-          // 结构化输出：exit code + stdout + stderr 分离
           const parts: string[] = []
           parts.push(`[exit code: ${exitCode}]`)
           if (timedOut) {
