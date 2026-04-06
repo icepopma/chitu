@@ -3,6 +3,10 @@
  *
  * 对齐 Codex App Server 协议
  * 单例模式：多个组件共享同一个 WebSocket 连接
+ *
+ * StrictMode 安全：
+ * - 连接是模块级单例，effect 只负责触发首次连接
+ * - 不在 cleanup 里 close/断开 — 连接生命周期独立于 React 组件
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -19,7 +23,6 @@ const pendingRequests = new Map<number, { resolve: (v: any) => void; reject: (e:
 let notificationHandler: ((method: string, params: any) => void) | null = null
 let connectedCallbacks = new Set<(v: boolean) => void>()
 let initializedCallbacks = new Set<(v: boolean) => void>()
-let isConnecting = false
 
 function sendRequest<T = any>(method: string, params?: Record<string, unknown>): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -33,17 +36,16 @@ function sendRequest<T = any>(method: string, params?: Record<string, unknown>):
   })
 }
 
-function connectWebSocket(url: string) {
-  if (wsInstance?.readyState === WebSocket.OPEN || isConnecting) return
+/** 确保 WebSocket 已连接（幂等，重复调用安全） */
+function ensureConnected(url: string) {
+  // 已连接或正在连接 → 不做任何事
+  if (wsInstance?.readyState === WebSocket.OPEN) return
+  if (wsInstance?.readyState === WebSocket.CONNECTING) return
 
-  isConnecting = true
   const ws = new WebSocket(url)
   wsInstance = ws
 
   ws.onopen = async () => {
-    // 检查是否仍是当前 ws（StrictMode 安全）
-    if (ws !== wsInstance) { ws.close(); return }
-
     connectedCallbacks.forEach(cb => cb(true))
     try {
       await sendRequest('initialize', {
@@ -60,7 +62,6 @@ function connectWebSocket(url: string) {
     } catch (err) {
       console.error('[ws] 初始化失败:', err)
     }
-    isConnecting = false
   }
 
   ws.onmessage = (event) => {
@@ -86,12 +87,10 @@ function connectWebSocket(url: string) {
     connectedCallbacks.forEach(cb => cb(false))
     initializedCallbacks.forEach(cb => cb(false))
     wsInstance = null
-    isConnecting = false
   }
 
   ws.onerror = () => {
     console.error('[ws] 连接错误')
-    isConnecting = false
   }
 }
 
@@ -102,6 +101,7 @@ export function useChituSocket(options?: { url?: string }) {
   const [connected, setConnected] = useState(wsInstance?.readyState === WebSocket.OPEN)
   const [initialized, setInitialized] = useState(false)
 
+  // 注册状态回调（cleanup 只移除回调，不断开连接）
   useEffect(() => {
     connectedCallbacks.add(setConnected)
     initializedCallbacks.add(setInitialized)
@@ -157,7 +157,7 @@ export function useChituSocket(options?: { url?: string }) {
     }
   }, [addThread, setTurnStatus, addItem, updateItem])
 
-  const connect = useCallback(() => connectWebSocket(url), [url])
+  const connect = useCallback(() => ensureConnected(url), [url])
 
   const createThread = useCallback(async (title?: string) => {
     const result = await sendRequest<{ thread: any }>('thread/create', { title })
@@ -184,8 +184,8 @@ export function useChituSocket(options?: { url?: string }) {
     // 首次发消息时，用消息内容更新线程标题
     const thread = threads.find((t) => t.id === threadId)
     if (thread && thread.title === '新对话') {
-    const title = message.length > 30 ? message.slice(0, 30) + '...' : message
-    updateThreadTitle(threadId, title)
+      const title = message.length > 30 ? message.slice(0, 30) + '...' : message
+      updateThreadTitle(threadId, title)
     }
 
     clearItems()
@@ -206,7 +206,10 @@ export function useChituSocket(options?: { url?: string }) {
     setPendingApproval(null)
   }, [setPendingApproval])
 
-  useEffect(() => { connect() }, [connect])
+  // 触发连接（幂等，StrictMode 调两次也安全）
+  useEffect(() => {
+    connect()
+  }, [connect])
 
   return { connect, createThread, resumeThread, sendMessage, interruptTurn, respondApproval, connected, initialized }
 }
