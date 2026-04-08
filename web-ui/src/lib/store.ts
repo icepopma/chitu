@@ -47,7 +47,11 @@ export const useAppStore = create<AppState>()((set) => ({
   setConnected: (v) => set({ connected: v }),
   setInitialized: (v) => set({ initialized: v }),
   setThreads: (threads) => set({ threads }),
-  addThread: (thread) => set((s) => ({ threads: [thread, ...s.threads] })),
+  addThread: (thread) => set((s) => {
+    // 去重：避免 RPC 响应和通知重复添加同一个线程
+    if (s.threads.some(t => t.id === thread.id)) return {}
+    return { threads: [thread, ...s.threads] }
+  }),
   selectThread: (id) => set({ currentThreadId: id, items: [] }),
   removeThread: (id) => set((s) => ({
     threads: s.threads.filter((t) => t.id !== id),

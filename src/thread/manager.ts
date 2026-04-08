@@ -11,6 +11,7 @@
 import { randomUUID } from 'crypto'
 import type { Thread, Turn, Item, AppEvent, EventHandler } from '../types.js'
 import { ThreadStore } from './store.js'
+import { RolloutRecorder } from '../rollout/recorder.js'
 import { runAgentLoop, buildSystemPrompt } from '../agent/loop.js'
 import type { AgentResult } from '../agent/loop.js'
 import { LLMClient } from '../llm/client.js'
@@ -46,10 +47,12 @@ export interface RunTurnResult {
 
 export class ThreadManager {
   private store: ThreadStore
+  private recorder: RolloutRecorder
   private handler?: EventHandler
 
   constructor(dataDir?: string) {
     this.store = new ThreadStore(dataDir)
+    this.recorder = new RolloutRecorder(dataDir ? `${dataDir}/../rollouts` : undefined)
   }
 
   /** 设置事件监听器（Message Processor 用这个接收事件） */
@@ -57,9 +60,26 @@ export class ThreadManager {
     this.handler = handler
   }
 
-  /** 发射事件 */
+  /** 发射事件（同时记录到 JSONL） */
   private emit(event: AppEvent): void {
+    // 记录到 JSONL（异步，不阻塞主流程）
+    const threadId = this.getThreadIdFromEvent(event)
+    if (threadId) {
+      this.recorder.record(threadId, event).catch(() => {})
+    }
     this.handler?.(event)
+  }
+
+  /** 从事件中提取 threadId */
+  private getThreadIdFromEvent(event: AppEvent): string | undefined {
+    switch (event.type) {
+      case 'thread/started': return event.thread.id
+      case 'turn/started': return event.thread.id
+      case 'turn/completed': return event.thread.id
+      case 'item/started': return event.thread.id
+      case 'item/completed': return event.thread.id
+      case 'approval/requested': return event.thread.id
+    }
   }
 
   /** 创建新线程 */
@@ -109,9 +129,10 @@ export class ThreadManager {
     return this.store.load(threadId)
   }
 
-  /** 删除线程 */
+  /** 删除线程（同时删除事件记录） */
   async deleteThread(threadId: string): Promise<void> {
     await this.store.delete(threadId)
+    await this.recorder.delete(threadId)
   }
 
   /** 重命名线程 */
@@ -122,6 +143,30 @@ export class ThreadManager {
       thread.updatedAt = Date.now()
       await this.store.save(thread)
     }
+  }
+
+  /**
+   * fork — 从现有线程派生新线程
+   *
+   * 对齐 Codex thread/fork：复制现有线程状态到新 ID
+   * 新线程从原线程的当前状态开始，可以走不同的方向
+   */
+  async fork(threadId: string): Promise<Thread | undefined> {
+    const source = await this.store.load(threadId)
+    if (!source) return undefined
+
+    const now = Date.now()
+    const forked: Thread = {
+      id: randomUUID(),
+      title: `${source.title} (fork)`,
+      status: 'created',
+      items: [...source.items],
+      createdAt: now,
+      updatedAt: now,
+    }
+    await this.store.save(forked)
+    this.emit({ type: 'thread/started', thread: forked })
+    return forked
   }
 
   /**

@@ -1,12 +1,12 @@
 import { useAppStore } from '../lib/store'
 import { useChituSocket } from '../hooks/useChituSocket'
-import { MessageSquare, Plus, Minus, Trash2, Wifi, WifiOff } from 'lucide-react'
+import { MessageSquare, Plus, Minus, Trash2, GitFork, Wifi, WifiOff } from 'lucide-react'
 import { cn } from '../lib/utils'
 import { useState } from 'react'
 
 export function Sidebar() {
   const { threads, currentThreadId } = useAppStore()
-  const { createThread, deleteThread, resumeThread, connected } = useChituSocket()
+  const { createThread, deleteThread, forkThread, resumeThread, connected } = useChituSocket()
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const handleSelect = async (id: string) => {
@@ -86,14 +86,24 @@ export function Sidebar() {
           新建
         </button>
         {currentThreadId && (
-          <button
-            onClick={() => handleDelete(currentThreadId)}
-            disabled={!connected}
-            className="flex items-center justify-center px-3 py-2 rounded bg-[#4a4a4a] hover:bg-red-600 text-white text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            title="删除当前对话"
-          >
-            <Minus className="w-4 h-4" />
-          </button>
+          <>
+            <button
+              onClick={() => forkThread(currentThreadId)}
+              disabled={!connected}
+              className="flex items-center justify-center px-3 py-2 rounded bg-[#4a4a4a] hover:bg-[#5865f2] text-white text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title="派生当前对话"
+            >
+              <GitFork className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => handleDelete(currentThreadId)}
+              disabled={!connected}
+              className="flex items-center justify-center px-3 py-2 rounded bg-[#4a4a4a] hover:bg-red-600 text-white text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title="删除当前对话"
+            >
+              <Minus className="w-4 h-4" />
+            </button>
+          </>
         )}
       </div>
     </div>

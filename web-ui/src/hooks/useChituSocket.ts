@@ -208,6 +208,16 @@ export function useChituSocket(options?: { url?: string }) {
     }
   }, [removeThread])
 
+  const forkThread = useCallback(async (threadId: string) => {
+    const result = await sendRequest<{ thread: any }>('thread/fork', { threadId })
+    if (result?.thread) {
+      addThread({ id: result.thread.id, title: result.thread.title || '新对话', updatedAt: Date.now() })
+      selectThread(result.thread.id)
+      clearItems()
+      return result.thread
+    }
+  }, [addThread, selectThread, clearItems])
+
   const interruptTurn = useCallback(async () => {
     const threadId = currentThreadIdRef.current
     if (!threadId) return
@@ -226,5 +236,5 @@ export function useChituSocket(options?: { url?: string }) {
     connect()
   }, [connect])
 
-  return { connect, createThread, deleteThread, resumeThread, sendMessage, interruptTurn, respondApproval, connected, initialized }
+  return { connect, createThread, deleteThread, forkThread, resumeThread, sendMessage, interruptTurn, respondApproval, connected, initialized }
 }

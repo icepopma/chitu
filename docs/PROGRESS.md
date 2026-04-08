@@ -355,16 +355,106 @@ Client                                   Server
   - **修改文件：** `src/tools/policy.ts`（新建）, `src/tools/base.ts`, `src/tools/exec.ts`, `src/agent/loop.ts`, `src/types.ts`, `src/server/message-processor.ts`
   - **验证：** ✅ 策略分类通过（ls=read, rm=dangerous, mkdir=write）+ 端到端审批闭环验证通过（Playwright 测试：rm -rf 触发审批 → ApprovalBanner 显示 → 用户拒绝 → Agent 优雅处理）
 
-- [ ] **第 13 步：高级能力（远期）**
-  - [ ] 13.1 会话事件流记录（Rollout Recording） — JSONL 记录 + resume/fork
-  - [ ] 13.2 Skills 系统 — `SKILL.md` 可复用工作流
-  - [ ] 13.3 多 Agent 协作 — 子任务拆分、并行执行、结果合并
-  - [ ] 13.4 执行计划（PLANS.md） — 多小时任务的活文档管理
-  - [ ] 13.5 沙盒执行 — Docker 容器隔离
-  - [ ] 13.6 分层 AGENTS.md 收集（root-to-CWD 所有目录，非仅根目录）
-  - [ ] 13.7 环境上下文改 XML 子元素格式（`<cwd>...</cwd>` 而非 key-value）
-  - [ ] 13.8 系统提示补充最终回复格式规范（文件引用用反引号、标题分段）
-  - [ ] 13.9 回合间环境差异检测（只发 delta，不重复注入）
+- [ ] **第 13 步：高级能力**
+
+  > 来源参考：3 篇 OpenAI 官方博客 + [openai/codex](https://github.com/openai/codex) 仓库源码
+
+  **博客文章索引：**
+  1. "Unrolling the Codex Agent Loop" — https://openai.com/index/unrolling-the-codex-agent-loop/
+  2. "Harness Engineering" — https://openai.com/zh-Hans-CN/index/harness-engineering/
+  3. "Unlocking the Codex Harness" — https://openai.com/zh-Hans-CN/index/unlocking-the-codex-harness/
+
+  - [ ] **13.1 会话事件流记录（Rollout Recording）** — JSONL 记录 + resume/fork
+    - **博客：** 文章 3 "Unlocking the Codex Harness" — Thread 生命周期章节
+      > "Codex 可创建、恢复、派生和归档线程，并持久保存事件历史记录，以便客户端重新连接并呈现一致的时间线"
+    - **仓库：** `codex-rs/rollout/` 目录
+      - `rollout/src/recorder.rs` — `RolloutRecorder` 事件记录器
+      - `rollout/src/metadata.rs` — 会话元数据（`SessionMeta`）
+      - `rollout/src/policy.rs` — `EventPersistenceMode` 持久化策略
+      - `rollout/src/state_db.rs` — SQLite 状态数据库
+      - `rollout/src/session_index.rs` — 会话索引（按名称/ID 查找）
+      - `core/src/rollout.rs` — 核心层 re-export
+
+  - [ ] **13.2 Skills 系统** — `SKILL.md` 可复用工作流
+    - **博客：** 文章 1 "Unrolling the Codex Agent Loop" — Input aggregation 章节（工具三层来源，用户提供层包含 Skills）
+    - **文档：** https://developers.openai.com/codex/skills
+    - **仓库：**
+      - `codex-rs/core/src/skills.rs` — `SkillsManager`、依赖解析、隐式调用检测
+      - `codex-rs/core/src/skills_watcher.rs` — 文件监听自动重载
+      - `codex-rs/skills/src/lib.rs` — Skills 加载框架
+      - `codex-rs/core-skills/` — 内置 Skills
+      - `docs/skills.md` — 文档入口
+
+  - [ ] **13.3 多 Agent 协作** — 子任务拆分、并行执行、结果合并
+    - **博客：** 文章 2 "Harness Engineering" — 深度优先工作方式章节
+      > "将更大的目标拆解为更小的构建模块（设计、代码、评审、测试等），提示智能体去构建这些模块"
+    - **仓库：**
+      - `codex-rs/core/src/spawn.rs` — `spawn_child_async()` 子进程派发、网络沙盒策略传递
+      - `codex-rs/core/templates/collab/` — 协作模式模板
+      - `codex-rs/core/templates/collaboration_mode/` — 多 Agent 协作模板
+      - `codex-rs/core/src/agent/` — Agent 抽象层
+
+  - [ ] **13.4 执行计划（PLANS.md）** — 多小时任务的活文档管理
+    - **博客：** 文章 2 "Harness Engineering" — Plans as first-class artifacts 章节
+      > "计划被视为一流的工件。临时轻量计划用于小幅变更，而复杂工作则记录在执行计划中，并附带进度和决策日志"
+    - **仓库：**
+      - `codex-rs/core/prompt.md` — `update_plan` 工具定义 + 完整 Planning 章节（计划使用指南、高质量/低质量示例）
+      - `codex-rs/core/src/snapshots/` — 计划快照管理
+    - **注：** Codex 的计划不是独立文件格式，而是通过 `update_plan` 工具 + prompt.md 规范实现
+
+  - [ ] **13.5 沙盒执行** — 容器隔离
+    - **博客：** 文章 2 "Harness Engineering" + 文章 3 "Unlocking the Codex Harness" — sandbox 配置和审批章节
+    - **文档：** https://developers.openai.com/codex/security
+    - **仓库：**
+      - `codex-rs/sandboxing/src/lib.rs` — 沙盒抽象层
+      - `codex-rs/sandboxing/src/bwrap.rs` — Linux bubblewrap 沙盒
+      - `codex-rs/sandboxing/src/seatbelt.rs` — macOS Seatbelt 沙盒
+      - `codex-rs/sandboxing/src/landlock.rs` — Linux Landlock 沙盒
+      - `codex-rs/sandboxing/src/manager.rs` — 沙盒管理器
+      - `codex-rs/linux-sandbox/` — Linux 专用沙盒
+      - `codex-rs/windows-sandbox-rs/` — Windows 专用沙盒
+      - `codex-rs/core/src/spawn.rs` — `CODEX_SANDBOX` / `CODEX_SANDBOX_NETWORK_DISABLED` 环境变量
+      - `docs/sandbox.md` — 文档入口
+
+  - [ ] **13.6 分层 AGENTS.md 收集** — root-to-CWD 所有目录遍历
+    - **博客：** 文章 1 "Unrolling the Codex Agent Loop" — Input aggregation 章节
+      > "look in each folder from the Git/project root of the cwd up to the cwd itself: add the contents of any of AGENTS.override.md, AGENTS.md"
+    - **仓库：**
+      - `codex-rs/core/hierarchical_agents_message.md` — 分层 AGENTS.md 规范（scope、优先级、冲突解决规则）
+      - `codex-rs/instructions/src/user_instructions.rs` — 用户指令加载（含 AGENTS.md 目录遍历逻辑）
+      - `docs/agents_md.md` — `child_agents_md` feature flag 说明
+
+  - [ ] **13.7 环境上下文改 XML 子元素格式** — `<cwd>...</cwd>` 替代 key-value
+    - **博客：** 文章 1 "Unrolling the Codex Agent Loop" — Prompt construction 章节
+    - **仓库：**
+      - `codex-rs/core/src/environment_context.rs` — `EnvironmentContext` 结构体
+        - `serialize_to_xml()` — 输出 `<environment_context><cwd>...</cwd><shell>...</shell>...</environment_context>`
+        - `equals_except_shell()` — 回合间对比（忽略 shell）
+      - `codex-rs/core/src/contextual_user_message.rs` — `ENVIRONMENT_CONTEXT_FRAGMENT` 包装器
+
+  - [ ] **13.8 系统提示补充最终回复格式规范** — 文件引用反引号、标题分段等
+    - **博客：** 文章 2 "Harness Engineering" — 品味不变式章节
+      > "我们通过自定义的代码检查器和结构测试来强制执行这些规则"
+    - **仓库：**
+      - `codex-rs/core/prompt.md` — 完整 "Final answer structure and style guidelines" 章节：
+        - Section Headers：`**Title Case**`，1-3 词
+        - Bullets：`-` 短列表，4-6 条
+        - Monospace：文件路径/命令用 `` `...` ``
+        - File References：路径 + 行号（`:42`），不用 URI
+        - Structure：general → specific → supporting
+        - Tone：协作自然、简洁事实、现在时主动语态
+
+  - [ ] **13.9 回合间环境差异检测** — 只发 delta，不重复注入
+    - **博客：** 文章 3 "Unlocking the Codex Harness" — 配置变更处理章节
+      > "当可能的时候，我们通过在对话过程中追加一条新消息来反映配置变化，而不是修改之前的消息"
+    - **仓库：**
+      - `codex-rs/core/src/environment_context.rs` — `diff_from_turn_context_item()` 方法
+        - 比较 before/after 的 cwd、network 等字段，只返回变化的部分
+      - `codex-rs/core/src/turn_diff_tracker.rs` — `TurnDiffTracker`
+        - 文件变更的 in-memory baseline snapshot
+        - `on_patch_begin()` — 文件修改前记录基线内容 + git blob OID
+        - `get_unified_diff()` — 生成聚合 unified diff
+        - 支持重命名/移动检测（stable internal UUID filename）
 
 ### 步骤 8 比对结论（2026-04-05 与 Codex 仓库比对）
 
@@ -381,6 +471,135 @@ Client                                   Server
 - 系统提示缺最终回复格式规范 → 13.8
 - 没有回合间环境差异检测 → 13.9
 - 没有 developer-role 分离（GLM API 无此角色，非遗漏）
+
+---
+
+## 第 13 步之后：完整差距分析（2026-04-06）
+
+> 对 openai/codex 仓库全面比对，识别步骤 1-13 未覆盖的能力
+> 按 ESSENTIAL / IMPORTANT / NICE-TO-HAVE 三级分类
+
+### ESSENTIAL（核心功能差距）
+
+#### 14.1 Apply Patch 工具 — 统一 diff 格式文件编辑
+- **现状：** Chitu 的 `edit_file` 用 old_text/new_text 精确匹配替换，容易失败（空格/缩进偏差即匹配不上）
+- **Codex 做法：** 用标准 unified diff 格式的 `apply_patch` 工具，支持增/删/改/移动，原子操作
+- **博客：** 文章 1 "Unrolling the Codex Agent Loop" — tool 定义章节
+- **仓库：**
+  - `codex-rs/apply-patch/` — 独立 apply-patch crate
+  - `codex-rs/core/src/apply_patch.rs` — 核心集成层
+  - `codex-rs/core/prompt.md` — 工具定义（`apply_patch` 是主要文件修改工具）
+- **为什么关键：** 文件编辑是 Agent 最高频操作，edit_file 的精确匹配在真实项目中经常失败
+
+#### 14.2 流式输出（item/delta）
+- **现状：** Chitu 等 Agent 整轮完成后才推送结果，用户需等待数十秒
+- **Codex 做法：** `item/started → item/delta (多次) → item/completed`，逐 token 推送
+- **博客：** 文章 1 "Unrolling the Codex Agent Loop" — Streaming 章节
+- **仓库：**
+  - `codex-rs/protocol/src/protocol.rs` — `Event::ItemDelta` 事件类型
+  - `codex-rs/core/src/stream_events_utils.rs` — 流事件工具
+  - `codex-rs/tui/` — TUI 流式渲染
+- **为什么关键：** 用户体验的基础，无流式 = 用户面对长时间空白等待
+
+### IMPORTANT（重要能力差距）
+
+#### 14.3 Memories 系统 — 跨会话知识积累
+- **现状：** 每个 thread 独立，无法跨会话学习和复用知识
+- **Codex 做法：** 自动从对话中提取结构化记忆（架构决策、项目约定、已知问题），后续会话自动注入
+- **博客：** 文章 2 "Harness Engineering" — 品味不变式章节
+- **仓库：**
+  - `codex-rs/core/src/memories/` — Memories 模块
+    - `phase1.rs` — 记忆生成（Phase 1：自动提取）
+    - `phase2.rs` — 记忆检索与注入（Phase 2：智能选取）
+    - `storage.rs` — 记忆持久化（SQLite）
+    - `control.rs` — 记忆控制（启停/阈值）
+    - `prompts.rs` — 记忆生成提示词
+    - `citations.rs` — 引用追踪
+  - `codex-rs/state/migrations/0006_memories.sql` — 数据库迁移
+- **为什么重要：** 让 Agent 随使用越来越聪明，避免重复犯同样的错误
+
+#### 14.4 Hooks 系统 — 工具执行前后的钩子
+- **现状：** Agent 执行工具无拦截点，无法自定义策略
+- **Codex 做法：** 5 个 hook 事件点，用户可配置 shell 命令作为钩子
+- **博客：** 未直接提及（属于 Codex CLI 高级配置）
+- **仓库：**
+  - `codex-rs/hooks/` — 完整 Hooks 引擎
+    - `src/engine/dispatcher.rs` — 事件分发
+    - `src/events/pre_tool_use.rs` — 工具执行前钩子（可阻止执行）
+    - `src/events/post_tool_use.rs` — 工具执行后钩子（可修改输出）
+    - `src/events/session_start.rs` — 会话启动钩子
+    - `src/events/stop.rs` — 会话结束钩子
+    - `src/events/user_prompt_submit.rs` — 用户输入提交钩子（可修改 prompt）
+  - `schema/generated/` — 每个钩子的 JSON Schema 输入/输出定义
+- **为什么重要：** 企业级 Agent 的必备能力（合规检查、自定义审批、日志审计）
+
+#### 14.5 MCP (Model Context Protocol) 集成
+- **现状：** 工具系统完全内置，无法接入外部工具服务
+- **Codex 做法：** 双向 MCP 支持（作为 client 调用外部 MCP server，也作为 server 暴露工具）
+- **博客：** 未直接提及（属于 Codex 生态扩展）
+- **仓库：**
+  - `codex-rs/mcp-server/` — Codex 作为 MCP Server
+  - `codex-rs/core/src/mcp/` — MCP Client 集成
+    - `mcp_connection_manager.rs` — 连接管理
+    - `mcp_tool_approval_templates.rs` — MCP 工具审批模板
+    - `mcp_tool_call.rs` — MCP 工具调用
+  - `codex-rs/rmcp-client/` — Rust MCP Client
+- **为什么重要：** 工具生态的基础协议，接入第三方能力（数据库、API、云服务）
+
+#### 14.6 文件监听（File Watcher）
+- **现状：** Agent 无法感知外部文件变更（编辑器保存、git pull 等）
+- **Codex 做法：** 实时监听文件系统变更，自动触发上下文更新
+- **博客：** 文章 3 "Unlocking the Codex Harness" — 实时性章节
+- **仓库：**
+  - `codex-rs/core/src/file_watcher.rs` — 文件监听器
+  - `codex-rs/core/src/skills_watcher.rs` — Skills 文件变更监听
+- **为什么重要：** Agent 长时间运行时，外部文件可能被修改，需要感知变化
+
+### NICE-TO-HAVE（进阶能力）
+
+#### 14.7 多 Shell 支持
+- **现状：** 硬编码 `/bin/bash`
+- **Codex 做法：** 自动检测用户 Shell（zsh/bash/PowerShell/cmd/sh），按类型派发不同参数
+- **仓库：**
+  - `codex-rs/core/src/shell.rs` — `Shell` 类型 + `ShellType` 枚举
+  - `codex-rs/core/src/shell_detect.rs` — Shell 检测
+  - `codex-rs/core/src/shell_snapshot.rs` — Shell 状态快照
+
+#### 14.8 分层配置系统
+- **现状：** 无配置管理
+- **Codex 做法：** 多层配置叠加（全局 → 项目 → 用户 → CLI 参数），类似 git config
+- **仓库：**
+  - `codex-rs/config/` — 配置层栈
+  - `codex-rs/core/src/config/` — 运行时配置加载
+
+#### 14.9 Review 模式
+- **现状：** Agent 只做执行，不做代码审查
+- **Codex 做法：** 专门的 review prompt + diff 格式审查输出
+- **仓库：**
+  - `codex-rs/core/review_prompt.md` — 审查专用提示词
+  - `codex-rs/core/src/review_prompts.rs` — 审查提示词管理
+
+#### 14.10 Git 深度集成
+- **现状：** Agent 可以执行 git 命令但无结构化 git 支持
+- **Codex 做法：** commit 归属标注、git utils 库、diff 生成
+- **仓库：**
+  - `codex-rs/git-utils/` — Git 工具库
+  - `codex-rs/core/src/commit_attribution.rs` — 提交归属
+
+### 优先级排序建议
+
+```
+14.1 Apply Patch    ██████████  最高优先（Agent 核心操作）
+14.2 流式输出       █████████░  高优先（用户体验基础）
+14.3 Memories       ████████░░  中高优先（长期价值）
+14.4 Hooks          ███████░░░  中优先（可扩展性）
+14.5 MCP            ██████░░░░  中优先（生态扩展）
+14.6 File Watcher   █████░░░░░  中低优先
+14.7 多 Shell       ███░░░░░░░  低优先
+14.8 分层配置       ███░░░░░░░  低优先
+14.9 Review 模式    ██░░░░░░░░  低优先
+14.10 Git 集成      ██░░░░░░░░  低优先
+```
 
 ## 里程碑记录
 

@@ -92,6 +92,8 @@ export class MessageProcessor {
           return await this.handleThreadDelete(ws, reqId, params)
         case 'thread/rename':
           return await this.handleThreadRename(ws, reqId, params)
+        case 'thread/fork':
+          return await this.handleThreadFork(ws, reqId, params)
         case 'turn/start':
           return await this.handleTurnStart(ws, reqId, params)
         case 'turn/interrupt':
@@ -171,6 +173,20 @@ export class MessageProcessor {
     }
     await this.manager.renameThread(threadId, title)
     this.send(ws, createResponse(id, {}))
+  }
+
+  private async handleThreadFork(ws: WebSocket, id: number | string, params?: Record<string, unknown>): Promise<void> {
+    const threadId = params?.threadId as string
+    if (!threadId) {
+      this.send(ws, createError(id, INVALID_PARAMS, 'Missing threadId'))
+      return
+    }
+    const forked = await this.manager.fork(threadId)
+    if (!forked) {
+      this.send(ws, createError(id, INVALID_PARAMS, `Thread ${threadId} not found`))
+      return
+    }
+    this.send(ws, createResponse(id, { thread: forked }))
   }
 
   /**
