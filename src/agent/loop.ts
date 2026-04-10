@@ -24,6 +24,7 @@ import { toolToDefinition } from '../tools/base.js'
 import { buildProjectContext } from '../context.js'
 import { truncateOutput } from '../utils/truncate.js'
 import { compactMessages } from './compact.js'
+import { formatSkillInjection, type Skill } from '../skills/index.js'
 
 // ===== 系统提示（对齐 Codex codex-rs/core/prompt.md） =====
 
@@ -179,12 +180,31 @@ export function buildInitialMessages(task: string, systemPrompt?: string): Messa
     content: systemPrompt || buildSystemPrompt(),
   })
 
-  // 2-3. AGENTS.md + 环境上下文
-  const { agentsMdMessage, environmentMessage } = buildProjectContext()
+  // 2-3. AGENTS.md + Skills + 环境上下文
+  const { agentsMdMessage, environmentMessage, skills, skillsSummary } = buildProjectContext()
 
   // AGENTS.md 作为 user-role 注入（对齐 Codex UserInstructions）
   if (agentsMdMessage) {
     messages.push({ role: 'user', content: agentsMdMessage })
+  }
+
+  // Skills 注入（对齐 Codex SkillsManager）
+  if (skills.length > 0) {
+    const skillsMessage = [
+      '# Available Skills',
+      'The following skills are available. When the user\'s task matches a skill, follow its instructions.',
+      '',
+      skillsSummary,
+      '',
+      'When a skill applies, use its full instructions to guide your work.',
+    ].join('\n')
+    messages.push({ role: 'user', content: skillsMessage })
+
+    // 匹配到的 Skill 注入完整内容
+    const matched = findMatchingSkills(task, skills)
+    for (const skill of matched) {
+      messages.push({ role: 'user', content: formatSkillInjection(skill) })
+    }
   }
 
   // 环境上下文也作为 user-role 注入
@@ -194,6 +214,22 @@ export function buildInitialMessages(task: string, systemPrompt?: string): Messa
   messages.push({ role: 'user', content: task })
 
   return messages
+}
+
+/**
+ * 根据用户输入匹配相关 Skills
+ *
+ * 对齐 Codex detect_implicit_skill_invocation_for_command
+ * 匹配逻辑：用户消息中包含 skill 名称或 description 中的关键词
+ */
+function findMatchingSkills(task: string, skills: Skill[]): Skill[] {
+  const lowerTask = task.toLowerCase()
+  return skills.filter(skill => {
+    const nameMatch = lowerTask.includes(skill.name.toLowerCase())
+    const descKeywords = skill.description.toLowerCase().split(/[,.\s]+/).filter(w => w.length > 4)
+    const keywordMatch = descKeywords.some(kw => lowerTask.includes(kw))
+    return nameMatch || keywordMatch
+  })
 }
 
 /**

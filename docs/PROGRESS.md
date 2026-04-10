@@ -364,7 +364,7 @@ Client                                   Server
   2. "Harness Engineering" — https://openai.com/zh-Hans-CN/index/harness-engineering/
   3. "Unlocking the Codex Harness" — https://openai.com/zh-Hans-CN/index/unlocking-the-codex-harness/
 
-  - [ ] **13.1 会话事件流记录（Rollout Recording）** — JSONL 记录 + resume/fork
+  - [x] **13.1 会话事件流记录（Rollout Recording）** ✅ — JSONL 记录 + resume/fork
     - **博客：** 文章 3 "Unlocking the Codex Harness" — Thread 生命周期章节
       > "Codex 可创建、恢复、派生和归档线程，并持久保存事件历史记录，以便客户端重新连接并呈现一致的时间线"
     - **仓库：** `codex-rs/rollout/` 目录
@@ -374,8 +374,20 @@ Client                                   Server
       - `rollout/src/state_db.rs` — SQLite 状态数据库
       - `rollout/src/session_index.rs` — 会话索引（按名称/ID 查找）
       - `core/src/rollout.rs` — 核心层 re-export
+    - **实现：**
+      - `src/rollout/recorder.ts`（新建）— `RolloutRecorder` JSONL 事件记录器，`record()` / `replay()` / `delete()`
+      - `src/rollout/index.ts`（新建）— 模块入口
+      - `src/thread/manager.ts`（修改）— `emit()` 同时写入 JSONL；新增 `fork()` 派生方法；`deleteThread()` 同时清理 JSONL
+      - `src/server/message-processor.ts`（修改）— 新增 `thread/fork` JSON-RPC 路由
+      - `web-ui/src/hooks/useChituSocket.ts`（修改）— 新增 `forkThread()` 方法
+      - `web-ui/src/components/Sidebar.tsx`（修改）— 新增派生按钮（GitFork 图标）
+      - `web-ui/src/lib/store.ts`（修改）— `addThread` 去重，防止 RPC + 通知重复添加
+    - **验证：** ✅ Playwright 端到端测试通过
+      - JSONL 文件自动创建，事件链完整（thread/started → turn/started → item/started/completed → turn/completed）
+      - Fork 按钮创建派生线程，标题自动加 `(fork)` 后缀，复制完整消息历史
+      - 无重复线程、无 console 错误
 
-  - [ ] **13.2 Skills 系统** — `SKILL.md` 可复用工作流
+  - [x] **13.2 Skills 系统** — `SKILL.md` 可复用工作流 ✅
     - **博客：** 文章 1 "Unrolling the Codex Agent Loop" — Input aggregation 章节（工具三层来源，用户提供层包含 Skills）
     - **文档：** https://developers.openai.com/codex/skills
     - **仓库：**
@@ -384,6 +396,15 @@ Client                                   Server
       - `codex-rs/skills/src/lib.rs` — Skills 加载框架
       - `codex-rs/core-skills/` — 内置 Skills
       - `docs/skills.md` — 文档入口
+    - **实现：**
+      - `src/skills/loader.ts`（新建）— SKILL.md 发现、解析（YAML frontmatter + Markdown body）、格式化
+      - `src/skills/index.ts`（新建）— 模块入口
+      - `src/context.ts`（修改）— `buildProjectContext()` 返回 skills 列表和摘要
+      - `src/agent/loop.ts`（修改）— `buildInitialMessages()` 注入 skills 摘要 + 匹配 skill 完整内容
+    - **匹配逻辑：** 用户消息包含 skill name 或 description 中的长关键词（>4 字符）即触发
+    - **验证：** ✅ Playwright e2e 测试 2/2 通过
+      - 匹配测试：发送 "Write a technical blog post..." → agent 使用 skill guidance 响应
+      - 非匹配测试：发送 "What is 2+2?" → agent 正常响应无 skill 注入
 
   - [ ] **13.3 多 Agent 协作** — 子任务拆分、并行执行、结果合并
     - **博客：** 文章 2 "Harness Engineering" — 深度优先工作方式章节
@@ -602,6 +623,49 @@ Client                                   Server
 ```
 
 ## 里程碑记录
+
+### 2026-04-10：步骤 13.2 完成 — Skills 系统（SKILL.md 可复用工作流）
+
+**完成了什么：** Agent 自动发现和加载项目中的 SKILL.md 技能文件，根据用户消息自动匹配相关技能并注入到 LLM 上下文。
+
+**为什么重要：** Skills 是 Codex Input aggregation 三层来源之一。让 Agent 可以根据任务类型自动获取专业指导（如技术博客写作规范、代码审查标准），而不需要每次在 prompt 中重复说明。
+
+**怎么做的：**
+- `src/skills/loader.ts`（新建）— 从 `.agents/skills/*/SKILL.md` 发现和解析技能文件
+  - `loadSkills(projectRoot)` — 扫描技能目录，解析 YAML frontmatter（name, description, allowed-tools）
+  - `parseSkillMd()` — 简易 YAML 解析器
+  - `formatSkillsSummary()` — 技能摘要格式化（注入到初始上下文）
+  - `formatSkillInjection()` — 完整技能内容格式化（`<skill>` 标签包裹）
+- `src/context.ts`（修改）— `buildProjectContext()` 返回 skills 列表和摘要
+- `src/agent/loop.ts`（修改）— `buildInitialMessages()` 注入：
+  1. 所有技能的摘要列表（"Available Skills" user-role message）
+  2. 匹配到的技能的完整内容（`<skill name="...">` 包裹）
+- 匹配逻辑：用户消息包含 skill name 或 description 中 >4 字符关键词即触发
+
+**验证：** Playwright e2e 测试 2/2 通过
+- 匹配测试：发送含 "technical blog" 关键词的消息 → agent 使用 technical-blog-writing skill 指导响应
+- 非匹配测试：发送 "What is 2+2?" → agent 正常响应，无 skill 注入
+
+### 2026-04-08：步骤 13.1 完成 — 会话事件流记录（Rollout Recording）
+
+**完成了什么：** Agent 所有事件自动记录到 JSONL 文件，支持线程派生（fork）。
+
+**为什么重要：** 事件流记录是 Codex "线程持久保存事件历史记录" 的核心能力。JSONL 记录了 Agent 的每一步操作（审计追踪），fork 允许用户从某个对话状态探索不同方向而不影响原对话。
+
+**怎么做的：**
+- `src/rollout/recorder.ts`（新建）— `RolloutRecorder`，每个线程一个 `.jsonl` 文件
+  - `record(threadId, event)` — 追加事件到 JSONL
+  - `replay(threadId)` — 回放所有事件记录
+  - `delete(threadId)` — 清理 JSONL 文件
+- `src/thread/manager.ts`（修改）
+  - `emit()` 同时调用 `recorder.record()`，异步写入不阻塞主流程
+  - `fork(threadId)` — 从现有线程派生新线程（复制 items，新 ID，标题加 `(fork)`）
+  - `deleteThread()` 同时清理 JSONL 文件
+- `src/server/message-processor.ts`（修改）— 新增 `thread/fork` JSON-RPC 路由
+- 前端：`forkThread()` 方法 + 侧边栏派生按钮（GitFork 图标）
+- Store：`addThread` 去重（防止 RPC 响应 + 通知重复添加）
+
+**验证：** Playwright 端到端测试通过 — JSONL 事件链完整、fork 按钮可用、无重复、无报错
 
 ### 2026-04-06：步骤 12 完成 — 安全与审批（含接线修复）
 

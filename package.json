@@ -11,6 +11,7 @@
     "test": "node --experimental-vm-modules --test tests/"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "@types/node": "^22.0.0",
     "@types/ws": "^8.18.1",
     "tsx": "^4.19.0",

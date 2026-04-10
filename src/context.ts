@@ -18,6 +18,7 @@
 
 import { readFileSync, existsSync } from 'fs'
 import { resolve, dirname, join } from 'path'
+import { loadSkills, formatSkillsSummary, type Skill } from './skills/index.js'
 
 /** AGENTS.md 最大字节数（对齐 Codex project_doc_max_bytes） */
 const MAX_BYTES = 32 * 1024 // 32 KiB
@@ -117,6 +118,8 @@ export function buildProjectContext(cwd?: string): {
   agentsMdMessage: string | null
   environmentMessage: string
   projectRoot: string | null
+  skills: Skill[]
+  skillsSummary: string
 } {
   const workDir = cwd || process.cwd()
   const projectRoot = findProjectRoot(workDir)
@@ -131,5 +134,9 @@ export function buildProjectContext(cwd?: string): {
 
   const environmentMessage = buildEnvironmentContext(workDir)
 
-  return { agentsMdMessage, environmentMessage, projectRoot }
+  // 加载 Skills
+  const skills = projectRoot ? loadSkills(projectRoot) : []
+  const skillsSummary = formatSkillsSummary(skills)
+
+  return { agentsMdMessage, environmentMessage, projectRoot, skills, skillsSummary }
 }
