@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Item, ThreadSummary, TurnStatus, ApprovalRequest } from '../types'
+import type { Item, ThreadSummary, TurnStatus, ApprovalRequest, PlanStep } from '../types'
 
 interface AppState {
   // 连接
@@ -19,6 +19,9 @@ interface AppState {
   // 审批
   pendingApproval: ApprovalRequest | null
 
+  // 计划
+  currentPlan: PlanStep[] | null
+
   // Actions
   setConnected: (v: boolean) => void
   setInitialized: (v: boolean) => void
@@ -33,6 +36,7 @@ interface AppState {
   clearItems: () => void
   setTurnStatus: (status: TurnStatus | 'idle') => void
   setPendingApproval: (req: ApprovalRequest | null) => void
+  setCurrentPlan: (plan: PlanStep[] | null) => void
 }
 
 export const useAppStore = create<AppState>()((set) => ({
@@ -43,6 +47,7 @@ export const useAppStore = create<AppState>()((set) => ({
   items: [],
   turnStatus: 'idle',
   pendingApproval: null,
+  currentPlan: null,
 
   setConnected: (v) => set({ connected: v }),
   setInitialized: (v) => set({ initialized: v }),
@@ -52,7 +57,7 @@ export const useAppStore = create<AppState>()((set) => ({
     if (s.threads.some(t => t.id === thread.id)) return {}
     return { threads: [thread, ...s.threads] }
   }),
-  selectThread: (id) => set({ currentThreadId: id, items: [] }),
+  selectThread: (id) => set({ currentThreadId: id, items: [], currentPlan: null }),
   removeThread: (id) => set((s) => ({
     threads: s.threads.filter((t) => t.id !== id),
     currentThreadId: s.currentThreadId === id ? null : s.currentThreadId,
@@ -68,4 +73,5 @@ export const useAppStore = create<AppState>()((set) => ({
   clearItems: () => set({ items: [] }),
   setTurnStatus: (status) => set({ turnStatus: status }),
   setPendingApproval: (req) => set({ pendingApproval: req }),
+  setCurrentPlan: (plan) => set({ currentPlan: plan }),
 }))

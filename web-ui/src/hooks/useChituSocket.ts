@@ -118,7 +118,7 @@ export function useChituSocket(options?: { url?: string }) {
   const {
     addThread, removeThread, selectThread, clearItems, setTurnStatus,
     addItem, updateItem, setItems, setThreads,
-    setPendingApproval, updateThreadTitle,
+    setPendingApproval, updateThreadTitle, setCurrentPlan,
     currentThreadId, threads,
   } = useAppStore()
 
@@ -155,6 +155,11 @@ export function useChituSocket(options?: { url?: string }) {
               riskLevel: params.riskLevel || 'write',
               threadId: params.threadId || '',
             })
+          }
+          break
+        case 'plan/updated':
+          if (params?.plan) {
+            setCurrentPlan(params.plan)
           }
           break
       }

@@ -66,3 +66,11 @@ export interface ApprovalRequest {
   riskLevel: 'read' | 'write' | 'dangerous'
   threadId: string
 }
+
+/** 计划步骤 */
+export type StepStatus = 'pending' | 'in_progress' | 'completed'
+
+export interface PlanStep {
+  step: string
+  status: StepStatus
+}

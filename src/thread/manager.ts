@@ -9,7 +9,7 @@
  */
 
 import { randomUUID } from 'crypto'
-import type { Thread, Turn, Item, AppEvent, EventHandler } from '../types.js'
+import type { Thread, Turn, Item, AppEvent, EventHandler, PlanStep } from '../types.js'
 import { ThreadStore } from './store.js'
 import { RolloutRecorder } from '../rollout/recorder.js'
 import { runAgentLoop, buildSystemPrompt } from '../agent/loop.js'
@@ -79,6 +79,7 @@ export class ThreadManager {
       case 'item/started': return event.thread.id
       case 'item/completed': return event.thread.id
       case 'approval/requested': return event.thread.id
+      case 'plan/updated': return event.thread.id
     }
   }
 
@@ -241,17 +242,31 @@ export class ThreadManager {
           if (step.toolCalls) {
             // Agent 调用了工具 → 添加 tool_call Items
             for (const tc of step.toolCalls) {
+              const toolArgs = JSON.parse(tc.function.arguments)
+
               this.addItem(thread, {
                 id: randomUUID(),
                 type: 'tool_call',
                 status: 'completed',
                 content: tc.function.arguments,
                 toolName: tc.function.name,
-                toolArgs: JSON.parse(tc.function.arguments),
+                toolArgs,
                 toolCallId: tc.id,
                 startedAt: Date.now(),
                 completedAt: Date.now(),
               })
+
+              // 检测 update_plan 工具调用 → 更新 thread.currentPlan 并发射事件
+              if (tc.function.name === 'update_plan' && toolArgs.plan) {
+                const plan: PlanStep[] = toolArgs.plan
+                thread.currentPlan = plan
+                this.emit({
+                  type: 'plan/updated',
+                  plan,
+                  explanation: toolArgs.explanation,
+                  thread,
+                })
+              }
             }
           }
 

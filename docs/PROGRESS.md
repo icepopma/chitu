@@ -415,13 +415,26 @@ Client                                   Server
       - `codex-rs/core/templates/collaboration_mode/` — 多 Agent 协作模板
       - `codex-rs/core/src/agent/` — Agent 抽象层
 
-  - [ ] **13.4 执行计划（PLANS.md）** — 多小时任务的活文档管理
+  - [x] **13.4 执行计划（PLANS.md）** — 多小时任务的活文档管理 ✅
     - **博客：** 文章 2 "Harness Engineering" — Plans as first-class artifacts 章节
       > "计划被视为一流的工件。临时轻量计划用于小幅变更，而复杂工作则记录在执行计划中，并附带进度和决策日志"
     - **仓库：**
-      - `codex-rs/core/prompt.md` — `update_plan` 工具定义 + 完整 Planning 章节（计划使用指南、高质量/低质量示例）
-      - `codex-rs/core/src/snapshots/` — 计划快照管理
-    - **注：** Codex 的计划不是独立文件格式，而是通过 `update_plan` 工具 + prompt.md 规范实现
+      - `codex-rs/core/gpt_5_1_prompt.md` — `update_plan` 工具定义 + 完整 Planning 章节
+      - `codex-rs/protocol/src/plan_tool.rs` — `UpdatePlanArgs { explanation?, plan: PlanItemArg[] }` 数据结构
+      - `codex-rs/core/src/tools/handlers/plan.rs` — 工具实现（no-op，发送 PlanUpdate 事件）
+    - **实现：**
+      - `src/types.ts`（修改）— 新增 PlanStep, StepStatus, UpdatePlanArgs, plan/updated 事件
+      - `src/tools/plan.ts`（新建）— update_plan 工具（no-op，对齐 Codex）
+      - `src/tools/plugin-loader.ts`（修改）— getTools() 包含 registered 状态插件
+      - `src/agent/loop.ts`（修改）— 系统提示增加 Planning 章节（高质量/低质量示例、使用时机、状态管理规则）
+      - `src/thread/manager.ts`（修改）— Thread 新增 currentPlan，检测 update_plan tool call 发射事件
+      - `src/server/message-processor.ts`（修改）— plan/updated 事件广播
+      - `web-ui/src/components/PlanPanel.tsx`（新建）— 计划面板组件（步骤状态图标、进度计数）
+      - `web-ui/src/lib/store.ts`（修改）— currentPlan 状态
+      - `web-ui/src/hooks/useChituSocket.ts`（修改）— 监听 plan/updated 通知
+    - **验证：** ✅ Playwright e2e 测试 2/2 通过
+      - 多步任务：Agent 调用 update_plan → PlanPanel 显示 3 个步骤 → Agent 执行并回复
+      - 简单任务：不触发 update_plan → 无 PlanPanel（正确）
 
   - [ ] **13.5 沙盒执行** — 容器隔离
     - **博客：** 文章 2 "Harness Engineering" + 文章 3 "Unlocking the Codex Harness" — sandbox 配置和审批章节
@@ -623,6 +636,30 @@ Client                                   Server
 ```
 
 ## 里程碑记录
+
+### 2026-04-11：步骤 13.4 完成 — 执行计划系统（update_plan 工具）
+
+**完成了什么：** Agent 可以通过 `update_plan` 工具创建和跟踪多步任务计划，前端实时展示计划步骤和进度。
+
+**为什么重要：** 计划系统是 Codex "Plans as first-class artifacts" 的核心能力。没有计划，Agent 做长任务时会丢失上下文。有了计划，Agent 像人类一样列待办、标进度、随时回顾，支持断点续做。
+
+**关键洞察（来自 Codex 源码注释）：** plan 工具本身是 no-op，不做任何实际操作。它的价值在于：1) 强制 Agent 结构化思考，2) 让客户端读取 tool call 参数来渲染计划 UI。
+
+**怎么做的：**
+- `src/types.ts` — 新增 PlanStep（step + status）、UpdatePlanArgs、plan/updated 事件
+- `src/tools/plan.ts`（新建）— update_plan 工具（no-op，对齐 Codex plan.rs）
+- `src/tools/plugin-loader.ts` — 修复 getTools() 返回 registered 状态的工具
+- `src/agent/loop.ts` — 系统提示增加完整 Planning 章节（对齐 Codex prompt.md）：
+  - 何时使用计划（非平凡、多阶段、有依赖）
+  - 何时不用（简单、单步）
+  - 高质量 vs 低质量计划示例
+  - 状态管理规则（始终一个 in_progress，完成后标 completed）
+- `src/thread/manager.ts` — Thread 新增 currentPlan 字段，检测 update_plan tool call 时解析参数、更新计划、发射 plan/updated 事件
+- 前端 PlanPanel 组件：步骤状态图标（⏳→🔄→✅）、进度计数、完成后样式变化
+
+**验证：** Playwright e2e 测试 2/2 通过
+- 多步任务：Agent 调用 update_plan → PlanPanel 显示 3 个步骤 → Agent 按计划执行
+- 简单任务：不触发 update_plan → 无 PlanPanel（正确行为）
 
 ### 2026-04-10：步骤 13.2 完成 — Skills 系统（SKILL.md 可复用工作流）
 

@@ -17,6 +17,7 @@ export interface Thread {
   title: string
   status: ThreadStatus
   items: Item[]
+  currentPlan?: PlanStep[]
   createdAt: number
   updatedAt: number
 }
@@ -59,6 +60,20 @@ export interface Item {
   completedAt?: number
 }
 
+// ===== Plan（对齐 Codex update_plan 工具） =====
+
+export type StepStatus = 'pending' | 'in_progress' | 'completed'
+
+export interface PlanStep {
+  step: string
+  status: StepStatus
+}
+
+export interface UpdatePlanArgs {
+  explanation?: string
+  plan: PlanStep[]
+}
+
 // ===== 事件（对齐 Codex App Server 协议） =====
 
 export type AppEvent =
@@ -68,6 +83,7 @@ export type AppEvent =
   | { type: 'item/started'; item: Item; thread: Thread }
   | { type: 'item/completed'; item: Item; thread: Thread }
   | { type: 'approval/requested'; id: string; command: string; riskLevel: string; thread: Thread }
+  | { type: 'plan/updated'; plan: PlanStep[]; explanation?: string; thread: Thread }
 
 /** 事件回调 —— 未来的 Message Processor 会监听这个 */
 export type EventHandler = (event: AppEvent) => void

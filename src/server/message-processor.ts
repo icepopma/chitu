@@ -347,5 +347,7 @@ function eventToParams(event: AppEvent): Record<string, unknown> {
       return { item: event.item }
     case 'approval/requested':
       return { id: event.id, command: event.command, riskLevel: event.riskLevel, thread: event.thread }
+    case 'plan/updated':
+      return { plan: event.plan, explanation: event.explanation }
   }
 }

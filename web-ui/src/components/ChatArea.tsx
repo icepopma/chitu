@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useAppStore } from '../lib/store'
 import { MessageItem } from './MessageItem'
+import { PlanPanel } from './PlanPanel'
 import { WelcomeScreen } from './WelcomeScreen'
 import { ApprovalBanner } from './ApprovalBanner'
 import { Loader2 } from 'lucide-react'
@@ -52,6 +53,9 @@ export function ChatArea() {
 
       {/* 审批横幅 */}
       <ApprovalBanner />
+
+      {/* 执行计划 */}
+      <PlanPanel />
 
       {/* Messages */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto py-4">
