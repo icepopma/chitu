@@ -425,7 +425,7 @@ Client                                   Server
     - **实现：**
       - `src/types.ts`（修改）— 新增 PlanStep, StepStatus, UpdatePlanArgs, plan/updated 事件
       - `src/tools/plan.ts`（新建）— update_plan 工具（no-op，对齐 Codex）
-      - `src/tools/plugin-loader.ts`（修改）— getTools() 包含 registered 状态插件
+      - `src/tools/plugin-loader.ts`（修改）— getTools() 包含 registered 状态组件
       - `src/agent/loop.ts`（修改）— 系统提示增加 Planning 章节（高质量/低质量示例、使用时机、状态管理规则）
       - `src/thread/manager.ts`（修改）— Thread 新增 currentPlan，检测 update_plan tool call 发射事件
       - `src/server/message-processor.ts`（修改）— plan/updated 事件广播
@@ -484,7 +484,7 @@ Client                                   Server
       - `src/agent/loop.ts`（修改）— `buildSystemPrompt()` 新增 "# Final answer structure and style guidelines" 章节
     - **验证：** ✅ System prompt 内容验证通过
 
-  - [ ] **13.9 回合间环境差异检测** — 只发 delta，不重复注入
+  - [x] **13.9 回合间环境差异检测** — 只发 delta，不重复注入 ✅
     - **博客：** 文章 3 "Unlocking the Codex Harness" — 配置变更处理章节
       > "当可能的时候，我们通过在对话过程中追加一条新消息来反映配置变化，而不是修改之前的消息"
     - **仓库：**
@@ -495,6 +495,23 @@ Client                                   Server
         - `on_patch_begin()` — 文件修改前记录基线内容 + git blob OID
         - `get_unified_diff()` — 生成聚合 unified diff
         - 支持重命名/移动检测（stable internal UUID filename）
+    - **实现：**
+      - `src/utils/env-diff.ts`（新建）— 环境快照捕获 + 差异比较 + XML 格式化
+        - `captureEnvSnapshot()` — 捕获 cwd/shell/date/platform 结构化快照
+        - `diffEnvSnapshots()` — 比较两次快照，返回变化的字段或 null（无变化）
+        - `formatEnvDelta()` — 格式化为 `<environment_context_update>` XML delta
+        - `formatFullEnvContext()` — 格式化为完整 `<environment_context>` XML
+      - `src/context.ts`（修改）— `buildEnvironmentContext()` 委托给 env-diff 模块
+      - `src/agent/loop.ts`（修改）— `buildInitialMessages()` 支持三态 envDelta：
+        - `undefined`（默认）→ 注入完整环境上下文（首次 turn）
+        - `EnvDiff` 对象 → 只注入变化的字段（后续 turn，环境有变化）
+        - `null` → 跳过环境注入（后续 turn，无变化）
+      - `src/thread/manager.ts`（修改）— `envSnapshots` Map 按线程存储快照
+        - 首次 turn 注入完整上下文 + 存储快照
+        - 后续 turn 比较快照，决定 delta/skip
+        - `fork()` 复制快照到派生线程
+        - `archive()`/`deleteThread()` 清理快照
+    - **验证：** ✅ 12 个单元测试通过 + Playwright 端到端测试 3/3 通过
 
 ### 步骤 8 比对结论（2026-04-05 与 Codex 仓库比对）
 
@@ -660,6 +677,38 @@ Client                                   Server
 ```
 
 ## 里程碑记录
+
+### 2026-04-12：步骤 13.9 完成 — 回合间环境差异检测
+
+**完成了什么：** Agent 在多个 turn 之间只注入环境变化的部分（delta），而不是每次重复注入完整环境上下文。
+
+**为什么重要：** 每次 turn 都注入完整环境上下文（cwd、shell、date、platform）是浪费 token 的。对齐 Codex 的做法：首次 turn 注入完整上下文，后续 turn 只注入变化的部分，无变化则跳过。这是 Codex "通过追加新消息反映配置变化，而不是修改之前的消息" 的核心思想。
+
+**怎么做的：**
+- `src/utils/env-diff.ts`（新建）— 环境快照工具
+  - `EnvSnapshot` 接口：cwd、shell、currentDate、platform 四个字段的结构化数据
+  - `captureEnvSnapshot()` — 捕获当前环境为结构化快照
+  - `diffEnvSnapshots(before, after)` — 比较两次快照，返回变化字段或 null（无变化）
+  - `formatEnvDelta()` — 格式化为 `<environment_context_update>` XML（只含变化字段）
+  - `formatFullEnvContext()` — 格式化为完整 `<environment_context>` XML
+- `src/context.ts`（修改）— `buildEnvironmentContext()` 委托给 env-diff 模块，移除内联 XML 生成
+- `src/agent/loop.ts`（修改）— `buildInitialMessages()` 支持三态 envDelta 参数：
+  - `undefined`（默认）→ 完整注入（首次 turn）
+  - `EnvDiff` 对象 → delta 注入（有变化）
+  - `null` → 跳过注入（无变化）
+- `src/thread/manager.ts`（修改）— `envSnapshots: Map<threadId, EnvSnapshot>` 管理快照生命周期
+  - `runTurn()` 中：捕获当前快照 → 与上次比较 → 决定 delta/skip/full → 存储当前快照
+  - `fork()` 复制快照到派生线程
+  - `archive()` / `deleteThread()` 清理快照
+
+**Code Review 修复：**
+- `buildEnvironmentContext` 移除冗余的 envDelta 参数（buildInitialMessages 自己处理三态）
+- `archive()` 添加 `envSnapshots.delete()` 防止内存泄漏
+- `fork()` 复制快照保持差异检测连续性
+- 移除重复的内联注释（JSDoc 已充分说明三态语义）
+- `diff ?? null` 简化 diff 赋值逻辑
+
+**验证：** ✅ 12 个单元测试通过 + Playwright 端到端测试 3/3 通过 + 现有 streaming 测试无回归
 
 ### 2026-04-12：步骤 13.7 + 13.8 完成 — 环境上下文 XML 格式 + 回复格式规范
 
