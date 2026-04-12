@@ -458,15 +458,18 @@ Client                                   Server
       - `codex-rs/instructions/src/user_instructions.rs` — 用户指令加载（含 AGENTS.md 目录遍历逻辑）
       - `docs/agents_md.md` — `child_agents_md` feature flag 说明
 
-  - [ ] **13.7 环境上下文改 XML 子元素格式** — `<cwd>...</cwd>` 替代 key-value
+  - [x] **13.7 环境上下文改 XML 子元素格式** ✅ — `<cwd>...</cwd>` 替代 key-value
     - **博客：** 文章 1 "Unrolling the Codex Agent Loop" — Prompt construction 章节
     - **仓库：**
       - `codex-rs/core/src/environment_context.rs` — `EnvironmentContext` 结构体
         - `serialize_to_xml()` — 输出 `<environment_context><cwd>...</cwd><shell>...</shell>...</environment_context>`
         - `equals_except_shell()` — 回合间对比（忽略 shell）
       - `codex-rs/core/src/contextual_user_message.rs` — `ENVIRONMENT_CONTEXT_FRAGMENT` 包装器
+    - **实现：**
+      - `src/context.ts`（修改）— `buildEnvironmentContext()` 改为 XML 子元素格式，新增 `xmlEscape()` 转义
+    - **验证：** ✅ XML 格式输出正确 + 特殊字符转义通过
 
-  - [ ] **13.8 系统提示补充最终回复格式规范** — 文件引用反引号、标题分段等
+  - [x] **13.8 系统提示补充最终回复格式规范** ✅ — 文件引用反引号、标题分段等
     - **博客：** 文章 2 "Harness Engineering" — 品味不变式章节
       > "我们通过自定义的代码检查器和结构测试来强制执行这些规则"
     - **仓库：**
@@ -477,6 +480,9 @@ Client                                   Server
         - File References：路径 + 行号（`:42`），不用 URI
         - Structure：general → specific → supporting
         - Tone：协作自然、简洁事实、现在时主动语态
+    - **实现：**
+      - `src/agent/loop.ts`（修改）— `buildSystemPrompt()` 新增 "# Final answer structure and style guidelines" 章节
+    - **验证：** ✅ System prompt 内容验证通过
 
   - [ ] **13.9 回合间环境差异检测** — 只发 delta，不重复注入
     - **博客：** 文章 3 "Unlocking the Codex Harness" — 配置变更处理章节
@@ -654,6 +660,20 @@ Client                                   Server
 ```
 
 ## 里程碑记录
+
+### 2026-04-12：步骤 13.7 + 13.8 完成 — 环境上下文 XML 格式 + 回复格式规范
+
+**完成了什么：** 环境上下文从 Markdown key-value 改为 XML 子元素格式；系统提示增加回复格式规范。
+
+**为什么重要：**
+- 13.7：XML 结构化格式让 LLM 更容易准确解析环境信息，也为后续 13.9 环境差异检测打好基础
+- 13.8：统一 Agent 回复风格（文件路径反引号引用、`path:line` 格式、结构化段落），提升输出质量一致性
+
+**怎么做的：**
+- `src/context.ts` — `buildEnvironmentContext()` 改为 `<cwd>...</cwd>` 等 XML 子元素，新增 `xmlEscape()` 处理 `&<>` 特殊字符
+- `src/agent/loop.ts` — `buildSystemPrompt()` 新增 "# Final answer structure and style guidelines" 章节（Section headers, Lists, Code references, Structure, Tone 五个维度）
+
+**验证：** ✅ XML 格式输出正确 + 特殊字符转义通过 + System prompt 内容验证通过
 
 ### 2026-04-12：步骤 14.2 完成 — 流式输出（item/delta）
 
