@@ -92,19 +92,28 @@ export function formatAgentsMdInjection(content: string, projectPath: string): s
 }
 
 /**
- * 构建环境上下文（对齐 Codex 的 environment_context）
+ * 构建环境上下文（对齐 Codex codex-rs/core/src/environment_context.rs）
  *
- * 包含：工作目录、Shell、日期时间
+ * 使用 XML 子元素格式（serialize_to_xml）：
+ * <environment_context>
+ *   <cwd>...</cwd>
+ *   <shell>...</shell>
+ *   ...
+ * </environment_context>
  */
+function xmlEscape(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
 export function buildEnvironmentContext(cwd?: string): string {
   const now = new Date()
   return [
     '<environment_context>',
-    `cwd: ${cwd || process.cwd()}`,
-    `shell: ${process.env.SHELL || '/bin/bash'}`,
-    `current_date: ${now.toISOString().split('T')[0]}`,
-    `current_time: ${now.toISOString()}`,
-    `platform: ${process.platform}`,
+    `  <cwd>${xmlEscape(cwd || process.cwd())}</cwd>`,
+    `  <shell>${xmlEscape(process.env.SHELL || '/bin/bash')}</shell>`,
+    `  <current_date>${now.toISOString().split('T')[0]}</current_date>`,
+    `  <current_time>${now.toISOString()}</current_time>`,
+    `  <platform>${process.platform}</platform>`,
     '</environment_context>',
   ].join('\n')
 }
