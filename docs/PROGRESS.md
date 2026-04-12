@@ -515,8 +515,8 @@ Client                                   Server
 
 ### ESSENTIAL（核心功能差距）
 
-#### 14.1 Apply Patch 工具 — 统一 diff 格式文件编辑
-- **现状：** Chitu 的 `edit_file` 用 old_text/new_text 精确匹配替换，容易失败（空格/缩进偏差即匹配不上）
+#### 14.1 Apply Patch 工具 — 统一 diff 格式文件编辑 ✅
+- **现状：** 已实现 Codex 风格的 `apply_patch` 工具，支持 Add/Delete/Update 文件操作，4 级模糊匹配
 - **Codex 做法：** 用标准 unified diff 格式的 `apply_patch` 工具，支持增/删/改/移动，原子操作
 - **博客：** 文章 1 "Unrolling the Codex Agent Loop" — tool 定义章节
 - **仓库：**
@@ -524,9 +524,17 @@ Client                                   Server
   - `codex-rs/core/src/apply_patch.rs` — 核心集成层
   - `codex-rs/core/prompt.md` — 工具定义（`apply_patch` 是主要文件修改工具）
 - **为什么关键：** 文件编辑是 Agent 最高频操作，edit_file 的精确匹配在真实项目中经常失败
+- **实现：**
+  - `src/tools/apply-patch/parser.ts`（新建）— `*** Begin Patch` / `*** End Patch` 格式解析，支持 Add/Delete/Update 三种操作，heredoc 包装剥离
+  - `src/tools/apply-patch/match.ts`（新建）— 4 级模糊匹配：精确 → 去尾空白 → 全去空白 → Unicode 归一化
+  - `src/tools/apply-patch/apply.ts`（新建）— 文件操作执行引擎，多 hunk 倒序应用，Move to 重命名支持
+  - `src/tools/apply-patch/index.ts`（新建）— 工具入口，注册为 `apply_patch`
+  - `src/agent/loop.ts`（修改）— 系统提示增加 apply_patch 使用指南和格式示例
+  - `src/tools/plugins/files/index.ts`（修改）— files 插件新增 apply_patch 工具
+- **验证：** ✅ 21 个单元测试通过 + Playwright 端到端测试 3/3 通过（创建文件、修改文件、多 hunk）
 
-#### 14.2 流式输出（item/delta）
-- **现状：** Chitu 等 Agent 整轮完成后才推送结果，用户需等待数十秒
+#### 14.2 流式输出（item/delta） ✅
+- **现状：** 已实现完整链路流式输出：LLM SSE → Agent Loop → WebSocket → 前端实时渲染
 - **Codex 做法：** `item/started → item/delta (多次) → item/completed`，逐 token 推送
 - **博客：** 文章 1 "Unrolling the Codex Agent Loop" — Streaming 章节
 - **仓库：**
@@ -534,6 +542,16 @@ Client                                   Server
   - `codex-rs/core/src/stream_events_utils.rs` — 流事件工具
   - `codex-rs/tui/` — TUI 流式渲染
 - **为什么关键：** 用户体验的基础，无流式 = 用户面对长时间空白等待
+- **实现：**
+  - `src/llm/client.ts`（修改）— 新增 `chatStream()` SSE 流式方法，try/finally reader 清理
+  - `src/agent/loop.ts`（修改）— `onStreamDelta` 回调，每 token 推送到 ThreadManager
+  - `src/thread/manager.ts`（修改）— 流式 item 生命周期：item/started → item/delta → item/completed；提取 `completeStreamingItem` 辅助方法；跳过 delta 的 JSONL 记录
+  - `src/types.ts`（修改）— 新增 `item/delta` 事件类型
+  - `src/server/message-processor.ts`（修改）— 广播 `item/delta` 通知
+  - `web-ui/src/lib/store.ts`（修改）— `appendItemContent` 高效 findIndex 更新
+  - `web-ui/src/hooks/useChituSocket.ts`（修改）— rAF 批量 delta 处理，item/completed 时清空 buffer
+  - `web-ui/src/components/MessageItem.tsx`（修改）— 流式光标动画（绿色脉冲）
+- **验证：** ✅ Playwright 端到端测试 3/3 通过（增量文本、完成验证、工具调用+流式）
 
 ### IMPORTANT（重要能力差距）
 
@@ -623,8 +641,8 @@ Client                                   Server
 ### 优先级排序建议
 
 ```
-14.1 Apply Patch    ██████████  最高优先（Agent 核心操作）
-14.2 流式输出       █████████░  高优先（用户体验基础）
+14.1 Apply Patch    ██████████  ✅ 已完成（2026-04-12）
+14.2 流式输出       █████████░  ✅ 已完成（2026-04-12）
 14.3 Memories       ████████░░  中高优先（长期价值）
 14.4 Hooks          ███████░░░  中优先（可扩展性）
 14.5 MCP            ██████░░░░  中优先（生态扩展）
@@ -636,6 +654,78 @@ Client                                   Server
 ```
 
 ## 里程碑记录
+
+### 2026-04-12：步骤 14.2 完成 — 流式输出（item/delta）
+
+**完成了什么：** 实现了 Agent 回复的逐 token 流式推送，用户不再需要等待数十秒空白。
+
+**为什么重要：** 流式输出是 AI 对话体验的基础。没有流式，用户发消息后盯着空白页面等 10-30 秒，体验极差。有了流式，文本逐字出现，用户能实时看到 Agent 的思考过程。
+
+**实现链路（7 层）：**
+1. `LLMClient.chatStream()` — 发 `stream: true`，解析 SSE 事件流（`data: {"delta":{"content":"..."}}]`），累积文本和工具调用
+2. `AgentLoop` — 新增 `onStreamDelta` 回调，每 token 传给 ThreadManager
+3. `ThreadManager` — 流式 item 生命周期管理：
+   - 首次 delta → `item/started`（空内容的 assistant_message）
+   - 后续 delta → `item/delta`（逐 token 推送）
+   - 最终完成 → `item/completed`（完整内容）
+   - 提取 `completeStreamingItem` 辅助方法消除 3 处重复代码
+4. `AppEvent` — 新增 `item/delta` 事件类型
+5. `MessageProcessor` — 广播 `item/delta` 到所有 WebSocket 客户端
+6. `useChituSocket` — rAF 批量处理 delta（requestAnimationFrame 合并更新），item/completed 时清空 buffer 防止内容污染
+7. `MessageItem` — 流式光标动画（绿色脉冲，status='started' 时显示）
+
+**性能优化：**
+- 跳过 delta 事件的 JSONL 记录（避免高频磁盘 I/O，delta 是瞬时 UI 数据）
+- 前端 rAF 批量更新（防止 100 token/sec 导致 React 过度渲染）
+- Store 用 findIndex 替代 map 全量遍历
+- SSE reader 加 try/finally 确保资源释放
+
+**Code Review 修复：**
+- Reader 泄漏 → try/finally + releaseLock
+- 流式消息出错清理 → catch 块中完成未关闭的 item
+- 消除重复代码 → completeStreamingItem 辅助方法
+- delta buffer 竞态 → item/completed 时清空对应 buffer
+
+**验证：** Playwright 端到端测试 3/3 通过
+1. 增量文本 — 文本长度从短变长，证明逐 token 推送
+2. 完成验证 — Turn 完成后消息有实质内容
+3. 工具调用 + 流式 — 先执行 exec 工具，然后流式回复
+
+### 2026-04-12：步骤 14.1 完成 — Apply Patch 工具 + 插件系统重构
+
+**完成了什么：** 实现了 Codex 风格的 `apply_patch` 工具，替代 edit_file 成为 Agent 的主要文件编辑手段。同时完成了工具系统的插件化重构。
+
+**为什么重要：** 文件编辑是 Agent 最高频操作。edit_file 的 old_text/new_text 精确匹配在实际项目中经常失败（空格偏差、缩进不一致），导致 Agent 卡在文件编辑环节。apply_patch 使用行级 diff 格式 + 4 级模糊匹配，大幅提升编辑成功率。
+
+**插件系统重构：**
+- `src/tools/plugin-types.ts`（新建）— Plugin 接口定义（元数据 + 生命周期钩子）
+- `src/tools/plugin-loader.ts`（新建）— PluginLoader（注册 → 加载 → 卸载，拓扑排序依赖管理）
+- `src/tools/plugins/exec/index.ts`、`files/index.ts`、`plan/index.ts` — 三个核心插件
+- `src/tools/index.ts`（重构）— ToolRegistry 改为 PluginLoader 驱动，对外接口不变
+- 还包含：GLM-Image 客户端、turn 事件附带 thread 数据（标题同步修复）
+
+**Apply Patch 实现：**
+- `src/tools/apply-patch/parser.ts`（新建）— 解析 `*** Begin Patch` 格式（Add/Delete/Update 三种操作）
+- `src/tools/apply-patch/match.ts`（新建）— 4 级模糊匹配（对齐 Codex seek_sequence.rs）：
+  1. 精确匹配（byte-for-byte）
+  2. 去尾空白匹配（rstrip）
+  3. 全去空白匹配（full trim）
+  4. Unicode 归一化匹配（花式引号/破折号 → ASCII）
+- `src/tools/apply-patch/apply.ts`（新建）— 文件操作执行引擎
+  - Add File：创建目录 + 写入
+  - Delete File：删除文件
+  - Update File：模糊匹配旧行 → 替换为新行，多 hunk 倒序应用
+  - Move to：重命名文件
+  - `*** End of File` 标记：从文件末尾开始搜索
+- `src/agent/loop.ts`（修改）— 系统提示增加 apply_patch 格式说明和使用指南
+- Heredoc 包装自动剥离（LLM 有时把 patch 包在 `<<'EOF' ... EOF` 里）
+
+**验证：**
+- 21 个单元测试通过（parser 8 个、match 4 个、apply 9 个）
+- Playwright 端到端测试 3/3 通过：
+  1. 创建新文件（`*** Add File`）— Agent 成功创建 utils.ts
+  2. 修改已有文件（`*** Update File`）— greet 函数返回值 Hello → Hi
+  3. 多 hunk 同时修改 — 一次 patch 改两个函数
 
 ### 2026-04-11：步骤 13.4 完成 — 执行计划系统（update_plan 工具）
 
