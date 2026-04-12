@@ -338,9 +338,9 @@ function eventToParams(event: AppEvent): Record<string, unknown> {
     case 'thread/started':
       return { thread: event.thread }
     case 'turn/started':
-      return { turn: event.turn }
+      return { turn: event.turn, thread: event.thread }
     case 'turn/completed':
-      return { turn: event.turn }
+      return { turn: event.turn, thread: event.thread }
     case 'item/started':
       return { item: event.item }
     case 'item/completed':

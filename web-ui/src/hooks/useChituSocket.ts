@@ -119,7 +119,7 @@ export function useChituSocket(options?: { url?: string }) {
     addThread, removeThread, selectThread, clearItems, setTurnStatus,
     addItem, updateItem, setItems, setThreads,
     setPendingApproval, updateThreadTitle, setCurrentPlan,
-    currentThreadId, threads,
+    currentThreadId,
   } = useAppStore()
 
   const currentThreadIdRef = useRef(currentThreadId)
@@ -136,6 +136,10 @@ export function useChituSocket(options?: { url?: string }) {
           break
         case 'turn/started':
           setTurnStatus('in_progress')
+          // 后端可能在此事件中更新了线程标题（自动重命名）
+          if (params?.thread?.id && params.thread.title) {
+            updateThreadTitle(params.thread.id, params.thread.title)
+          }
           break
         case 'item/started':
           if (params?.item) addItem(params.item as Item)
@@ -190,19 +194,10 @@ export function useChituSocket(options?: { url?: string }) {
     const threadId = currentThreadIdRef.current
     if (!threadId) throw new Error('没有选中的线程')
 
-    // 首次发消息时，用消息内容更新线程标题
-    const thread = threads.find((t) => t.id === threadId)
-    if (thread && (thread.title === '新对话' || thread.title === 'Untitled')) {
-      const title = message.length > 30 ? message.slice(0, 30) + '...' : message
-      updateThreadTitle(threadId, title)
-      // 持久化到服务器
-      sendRequest('thread/rename', { threadId, title }).catch(() => {})
-    }
-
     clearItems()
     setTurnStatus('in_progress')
     await sendRequest('turn/start', { threadId, message })
-  }, [clearItems, setTurnStatus, updateThreadTitle, threads])
+  }, [clearItems, setTurnStatus])
 
   const deleteThread = useCallback(async (threadId: string) => {
     try {

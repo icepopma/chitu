@@ -18,6 +18,13 @@ skills-lock.json
 # 测试产物
 mini-chitu/
 test-e2e-*.ts
+test-results/
+test-output.png
+src/test-image.ts
+src/gen-cover.ts
+
+# Playwright MCP 会话日志
+.playwright-mcp/
 
 # 博客草稿（含大图片）
 blog/
