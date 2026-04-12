@@ -33,6 +33,7 @@ interface AppState {
   setItems: (items: Item[]) => void
   addItem: (item: Item) => void
   updateItem: (itemId: string, update: Partial<Item>) => void
+  appendItemContent: (itemId: string, delta: string) => void
   clearItems: () => void
   setTurnStatus: (status: TurnStatus | 'idle') => void
   setPendingApproval: (req: ApprovalRequest | null) => void
@@ -70,6 +71,13 @@ export const useAppStore = create<AppState>()((set) => ({
   updateItem: (itemId, update) => set((s) => ({
     items: s.items.map((i) => i.id === itemId ? { ...i, ...update } : i),
   })),
+  appendItemContent: (itemId, delta) => set((s) => {
+    const idx = s.items.findIndex(i => i.id === itemId)
+    if (idx === -1) return {}
+    const newItems = [...s.items]
+    newItems[idx] = { ...newItems[idx], content: newItems[idx].content + delta }
+    return { items: newItems }
+  }),
   clearItems: () => set({ items: [] }),
   setTurnStatus: (status) => set({ turnStatus: status }),
   setPendingApproval: (req) => set({ pendingApproval: req }),

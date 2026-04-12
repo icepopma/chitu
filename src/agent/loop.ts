@@ -17,7 +17,7 @@
  * - signal 支持中途取消
  */
 
-import type { Message, ToolCall, ToolDefinition } from '../llm/client.js'
+import type { Message, ToolCall, ToolDefinition, StreamChunk } from '../llm/client.js'
 import { LLMClient } from '../llm/client.js'
 import type { Tool } from '../tools/base.js'
 import { toolToDefinition } from '../tools/base.js'
@@ -180,11 +180,14 @@ export interface AgentLoopConfig {
   /** 每一步的回调（用于观察 Agent 在做什么） */
   onStep?: (step: AgentStep) => void
   /**
-   * 审批回调 — 当工具需要用户确认时调用
+   * 流式文本增量回调 — 每收到一个 token 就调用
    *
-   * 返回 true = 批准执行
-   * 返回 false = 拒绝（Agent 收到拒绝消息）
-   * 不设置 = 全部自动批准（开发模式）
+   * 对齐 Codex item/delta 事件：LLM 生成文本时逐 token 推送
+   * 只在 Agent 最终回复（非工具调用）时触发
+   */
+  onStreamDelta?: (itemId: string, delta: string) => void
+  /**
+   * 审批回调 — 当工具需要用户确认时调用
    */
   onApprovalNeeded?: (toolName: string, args: Record<string, unknown>) => Promise<boolean>
 }
@@ -315,6 +318,7 @@ export async function runAgentLoop(
     maxIterations = 50,
     signal,
     onStep,
+    onStreamDelta,
   } = config
 
   // 1. 构建工具查找表
@@ -356,8 +360,20 @@ export async function runAgentLoop(
       messages.push(...compactResult.messages)
     }
 
-    // 4b. 调用 LLM
-    const response = await client.chat(messages, toolDefinitions)
+    // 4b. 调用 LLM（流式）
+    // 用 chatStream 逐 token 推送文本，同时累积完整响应
+    // 工具调用也通过流累积（arguments 是增量拼接的）
+    const streamingItemId = crypto.randomUUID()
+    const response = await client.chatStream(
+      messages,
+      (chunk: StreamChunk) => {
+        // 只对文本增量调用回调（工具调用在流中累积，不逐块回调）
+        if (chunk.delta && onStreamDelta) {
+          onStreamDelta(streamingItemId, chunk.delta)
+        }
+      },
+      toolDefinitions,
+    )
     totalTokens += response.usage.total_tokens
 
     // 4c. 如果没有工具调用 → 任务完成

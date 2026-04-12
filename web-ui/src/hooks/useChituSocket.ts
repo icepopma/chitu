@@ -117,7 +117,7 @@ export function useChituSocket(options?: { url?: string }) {
 
   const {
     addThread, removeThread, selectThread, clearItems, setTurnStatus,
-    addItem, updateItem, setItems, setThreads,
+    addItem, updateItem, appendItemContent, setItems, setThreads,
     setPendingApproval, updateThreadTitle, setCurrentPlan,
     currentThreadId,
   } = useAppStore()
@@ -125,7 +125,10 @@ export function useChituSocket(options?: { url?: string }) {
   const currentThreadIdRef = useRef(currentThreadId)
   useEffect(() => { currentThreadIdRef.current = currentThreadId }, [currentThreadId])
 
-  // 设置通知处理器
+  // 设置通知处理器（含 delta 批量缓冲）
+  const deltaBuffer = useRef<Array<{ itemId: string; delta: string }>>([])
+  const deltaFlushScheduled = useRef(false)
+
   useEffect(() => {
     notificationHandler = (method: string, params: any) => {
       switch (method) {
@@ -144,8 +147,29 @@ export function useChituSocket(options?: { url?: string }) {
         case 'item/started':
           if (params?.item) addItem(params.item as Item)
           break
+        case 'item/delta':
+          if (params?.itemId && params?.delta) {
+            // 用 rAF 批量更新，避免高频 delta 导致过度渲染
+            deltaBuffer.current.push({ itemId: params.itemId, delta: params.delta })
+            if (!deltaFlushScheduled.current) {
+              deltaFlushScheduled.current = true
+              requestAnimationFrame(() => {
+                for (const { itemId, delta } of deltaBuffer.current) {
+                  appendItemContent(itemId, delta)
+                }
+                deltaBuffer.current.length = 0
+                deltaFlushScheduled.current = false
+              })
+            }
+          }
+          break
         case 'item/completed':
-          if (params?.item) updateItem((params.item as Item).id, params.item as Item)
+          if (params?.item) {
+            const completedId = (params.item as Item).id
+            // 清空该 item 的 pending delta，避免 rAF 追加到已完成内容
+            deltaBuffer.current = deltaBuffer.current.filter(d => d.itemId !== completedId)
+            updateItem(completedId, params.item as Item)
+          }
           break
         case 'turn/completed':
           if (params?.turn) setTurnStatus(params.turn.status || 'completed')
@@ -168,7 +192,7 @@ export function useChituSocket(options?: { url?: string }) {
           break
       }
     }
-  }, [addThread, setTurnStatus, addItem, updateItem, removeThread])
+  }, [addThread, setTurnStatus, addItem, updateItem, appendItemContent, removeThread])
 
   const connect = useCallback(() => ensureConnected(url), [url])
 

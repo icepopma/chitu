@@ -60,12 +60,13 @@ export class ThreadManager {
     this.handler = handler
   }
 
-  /** 发射事件（同时记录到 JSONL） */
+  /** 发射事件（delta 事件不写 JSONL，避免高频磁盘 I/O） */
   private emit(event: AppEvent): void {
-    // 记录到 JSONL（异步，不阻塞主流程）
-    const threadId = this.getThreadIdFromEvent(event)
-    if (threadId) {
-      this.recorder.record(threadId, event).catch(() => {})
+    if (event.type !== 'item/delta') {
+      const threadId = this.getThreadIdFromEvent(event)
+      if (threadId) {
+        this.recorder.record(threadId, event).catch(() => {})
+      }
     }
     this.handler?.(event)
   }
@@ -230,6 +231,26 @@ export class ThreadManager {
     // 4. 运行 Agent Loop
     let agentResult: AgentResult
 
+    let streamingItemId: string | null = null
+
+    /** 完成流式消息，发射 item/completed 并存入 thread.items */
+    const completeStreamingItem = (content: string, isError = false) => {
+      if (!streamingItemId) return
+      const item: Item = {
+        id: streamingItemId,
+        type: 'assistant_message',
+        status: 'completed',
+        content,
+        isError: isError || undefined,
+        startedAt: Date.now(),
+        completedAt: Date.now(),
+      }
+      this.emit({ type: 'item/completed', item, thread })
+      thread.items.push(item)
+      thread.updatedAt = Date.now()
+      streamingItemId = null
+    }
+
     try {
       agentResult = await runAgentLoop(userInput, {
         client,
@@ -238,9 +259,27 @@ export class ThreadManager {
         maxIterations: options?.maxIterations || 50,
         signal: options?.signal,
         onApprovalNeeded: options?.onApprovalNeeded,
+        onStreamDelta: (itemId, delta) => {
+          if (!streamingItemId) {
+            streamingItemId = itemId
+            this.emit({
+              type: 'item/started',
+              item: {
+                id: itemId,
+                type: 'assistant_message',
+                status: 'started',
+                content: '',
+                startedAt: Date.now(),
+              },
+              thread,
+            })
+          }
+          this.emit({ type: 'item/delta', itemId, delta, thread })
+        },
         onStep: (step) => {
           if (step.toolCalls) {
-            // Agent 调用了工具 → 添加 tool_call Items
+            completeStreamingItem(step.content || '')
+
             for (const tc of step.toolCalls) {
               const toolArgs = JSON.parse(tc.function.arguments)
 
@@ -256,7 +295,6 @@ export class ThreadManager {
                 completedAt: Date.now(),
               })
 
-              // 检测 update_plan 工具调用 → 更新 thread.currentPlan 并发射事件
               if (tc.function.name === 'update_plan' && toolArgs.plan) {
                 const plan: PlanStep[] = toolArgs.plan
                 thread.currentPlan = plan
@@ -271,7 +309,6 @@ export class ThreadManager {
           }
 
           if (step.toolResults) {
-            // 工具执行结果 → 添加 tool_result Items
             for (const tr of step.toolResults) {
               this.addItem(thread, {
                 id: randomUUID(),
@@ -287,8 +324,8 @@ export class ThreadManager {
             }
           }
 
-          // 如果没有 tool_calls，说明是最终回复
-          if (step.content && !step.toolCalls) {
+          // 非流式路径（无 onStreamDelta）
+          if (step.content && !step.toolCalls && !streamingItemId) {
             this.addItem(thread, {
               id: randomUUID(),
               type: 'assistant_message',
@@ -298,9 +335,16 @@ export class ThreadManager {
               completedAt: Date.now(),
             })
           }
+
+          // 流式路径：最后一轮完成
+          if (step.content && !step.toolCalls && streamingItemId) {
+            completeStreamingItem(step.content)
+          }
         },
       })
     } catch (err: any) {
+      completeStreamingItem('', true)
+
       turn.status = 'failed'
       turn.completedAt = Date.now()
       this.addItem(thread, {

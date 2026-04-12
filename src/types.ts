@@ -82,6 +82,7 @@ export type AppEvent =
   | { type: 'turn/completed'; turn: Turn; thread: Thread }
   | { type: 'item/started'; item: Item; thread: Thread }
   | { type: 'item/completed'; item: Item; thread: Thread }
+  | { type: 'item/delta'; itemId: string; delta: string; thread: Thread }
   | { type: 'approval/requested'; id: string; command: string; riskLevel: string; thread: Thread }
   | { type: 'plan/updated'; plan: PlanStep[]; explanation?: string; thread: Thread }
 

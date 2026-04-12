@@ -74,10 +74,13 @@ export function MessageItem({ items }: { items: Item[] }) {
                   <ToolCallItem key={j} call={tool.call} result={tool.result} />
                 ))}
 
-                {/* Assistant Text */}
+                {/* Assistant Text — streaming shows cursor */}
                 {group.message.content && (
                   <div className="text-sm text-[#ddd] mt-1 whitespace-pre-wrap">
                     {group.message.content}
+                    {group.message.status === 'started' && (
+                      <span className="inline-block w-1.5 h-4 bg-[#43b581] ml-0.5 animate-pulse align-text-bottom" />
+                    )}
                   </div>
                 )}
               </div>
