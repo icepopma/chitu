@@ -21,7 +21,9 @@ import type { Message, ToolCall, ToolDefinition, StreamChunk } from '../llm/clie
 import { LLMClient } from '../llm/client.js'
 import type { Tool } from '../tools/base.js'
 import { toolToDefinition } from '../tools/base.js'
-import { buildProjectContext } from '../context.js'
+import { buildProjectContext, buildEnvironmentContext } from '../context.js'
+import type { EnvDiff } from '../utils/env-diff.js'
+import { formatEnvDelta } from '../utils/env-diff.js'
 import { truncateOutput } from '../utils/truncate.js'
 import { compactMessages } from './compact.js'
 import { formatSkillInjection, type Skill } from '../skills/index.js'
@@ -217,6 +219,13 @@ export interface AgentLoopConfig {
    * 审批回调 — 当工具需要用户确认时调用
    */
   onApprovalNeeded?: (toolName: string, args: Record<string, unknown>) => Promise<boolean>
+  /**
+   * v13.9: 环境差异 — 回合间只注入变化的字段
+   * - undefined（默认）: 注入完整环境上下文
+   * - EnvDiff: 只注入变化的字段
+   * - null: 跳过环境上下文注入（无变化）
+   */
+  envDelta?: EnvDiff | null
 }
 
 /** Agent 每一步的状态（用于观察和调试） */
@@ -257,10 +266,15 @@ export interface AgentResult {
  * 对齐 Codex build_initial_context 的组装顺序：
  * 1. system-role: 系统提示（身份 + 人格 + 指南）
  * 2. user-role: AGENTS.md 片段（如果存在）
- * 3. user-role: 环境上下文（cwd、shell、日期）
+ * 3. user-role: 环境上下文（完整 / delta / 跳过）
  * 4. user-role: 用户实际输入
+ *
+ * v13.9: envDelta 参数支持回合间差异注入
+ * - undefined（默认）: 注入完整环境上下文（首次 turn）
+ * - EnvDiff 对象: 只注入变化的字段（后续 turn，环境有变化）
+ * - null: 跳过环境上下文注入（后续 turn，无变化）
  */
-export function buildInitialMessages(task: string, systemPrompt?: string): Message[] {
+export function buildInitialMessages(task: string, systemPrompt?: string, envDelta?: EnvDiff | null): Message[] {
   const messages: Message[] = []
 
   // 1. system-role: 系统提示
@@ -270,7 +284,7 @@ export function buildInitialMessages(task: string, systemPrompt?: string): Messa
   })
 
   // 2-3. AGENTS.md + Skills + 环境上下文
-  const { agentsMdMessage, environmentMessage, skills, skillsSummary } = buildProjectContext()
+  const { agentsMdMessage, skills, skillsSummary } = buildProjectContext()
 
   // AGENTS.md 作为 user-role 注入（对齐 Codex UserInstructions）
   if (agentsMdMessage) {
@@ -296,8 +310,12 @@ export function buildInitialMessages(task: string, systemPrompt?: string): Messa
     }
   }
 
-  // 环境上下文也作为 user-role 注入
-  messages.push({ role: 'user', content: environmentMessage })
+  // 3. 环境上下文 — v13.9: 支持 delta 注入
+  if (envDelta === undefined) {
+    messages.push({ role: 'user', content: buildEnvironmentContext() })
+  } else if (envDelta !== null) {
+    messages.push({ role: 'user', content: formatEnvDelta(envDelta) })
+  }
 
   // 4. 用户实际输入
   messages.push({ role: 'user', content: task })
@@ -346,6 +364,7 @@ export async function runAgentLoop(
     signal,
     onStep,
     onStreamDelta,
+    envDelta,
   } = config
 
   // 1. 构建工具查找表
@@ -358,7 +377,8 @@ export async function runAgentLoop(
   const toolDefinitions: ToolDefinition[] = tools.map(toolToDefinition)
 
   // 3. 构建初始上下文（对齐 Codex build_initial_context）
-  const messages = buildInitialMessages(task, systemPrompt)
+  // v13.9: envDelta 控制环境上下文注入策略
+  const messages = buildInitialMessages(task, systemPrompt, envDelta)
 
   let totalTokens = 0
 

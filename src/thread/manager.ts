@@ -16,6 +16,7 @@ import { runAgentLoop, buildSystemPrompt } from '../agent/loop.js'
 import type { AgentResult } from '../agent/loop.js'
 import { LLMClient } from '../llm/client.js'
 import { createToolRegistry } from '../tools/index.js'
+import { captureEnvSnapshot, diffEnvSnapshots, type EnvSnapshot, type EnvDiff } from '../utils/env-diff.js'
 
 /** runTurn 的配置选项 */
 export interface RunTurnOptions {
@@ -49,6 +50,8 @@ export class ThreadManager {
   private store: ThreadStore
   private recorder: RolloutRecorder
   private handler?: EventHandler
+  /** 每个 thread 最后一次 turn 的环境快照（用于 13.9 回合间差异检测） */
+  private envSnapshots = new Map<string, EnvSnapshot>()
 
   constructor(dataDir?: string) {
     this.store = new ThreadStore(dataDir)
@@ -118,6 +121,7 @@ export class ThreadManager {
       thread.status = 'archived'
       thread.updatedAt = Date.now()
       await this.store.save(thread)
+      this.envSnapshots.delete(threadId)
     }
   }
 
@@ -131,10 +135,11 @@ export class ThreadManager {
     return this.store.load(threadId)
   }
 
-  /** 删除线程（同时删除事件记录） */
+  /** 删除线程（同时删除事件记录和环境快照） */
   async deleteThread(threadId: string): Promise<void> {
     await this.store.delete(threadId)
     await this.recorder.delete(threadId)
+    this.envSnapshots.delete(threadId)
   }
 
   /** 重命名线程 */
@@ -168,6 +173,12 @@ export class ThreadManager {
     }
     await this.store.save(forked)
     this.emit({ type: 'thread/started', thread: forked })
+
+    // v13.9: 复制环境快照到派生线程，保持差异检测连续性
+    const sourceSnapshot = this.envSnapshots.get(threadId)
+    if (sourceSnapshot) {
+      this.envSnapshots.set(forked.id, { ...sourceSnapshot })
+    }
     return forked
   }
 
@@ -228,6 +239,16 @@ export class ThreadManager {
     // 从已有 items 重建对话历史
     const messages = this.buildMessages(thread)
 
+    // 3b. v13.9: 回合间环境差异检测
+    const currentEnv = captureEnvSnapshot()
+    let envDelta: EnvDiff | null | undefined = undefined
+    const previousEnv = this.envSnapshots.get(threadId)
+    if (previousEnv) {
+      const diff = diffEnvSnapshots(previousEnv, currentEnv)
+      envDelta = diff ?? null
+    }
+    this.envSnapshots.set(threadId, currentEnv)
+
     // 4. 运行 Agent Loop
     let agentResult: AgentResult
 
@@ -259,6 +280,7 @@ export class ThreadManager {
         maxIterations: options?.maxIterations || 50,
         signal: options?.signal,
         onApprovalNeeded: options?.onApprovalNeeded,
+        envDelta,
         onStreamDelta: (itemId, delta) => {
           if (!streamingItemId) {
             streamingItemId = itemId

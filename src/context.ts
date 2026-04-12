@@ -19,6 +19,7 @@
 import { readFileSync, existsSync } from 'fs'
 import { resolve, dirname, join } from 'path'
 import { loadSkills, formatSkillsSummary, type Skill } from './skills/index.js'
+import { captureEnvSnapshot, formatFullEnvContext, type EnvDiff } from './utils/env-diff.js'
 
 /** AGENTS.md 最大字节数（对齐 Codex project_doc_max_bytes） */
 const MAX_BYTES = 32 * 1024 // 32 KiB
@@ -101,21 +102,9 @@ export function formatAgentsMdInjection(content: string, projectPath: string): s
  *   ...
  * </environment_context>
  */
-function xmlEscape(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-}
-
 export function buildEnvironmentContext(cwd?: string): string {
-  const now = new Date()
-  return [
-    '<environment_context>',
-    `  <cwd>${xmlEscape(cwd || process.cwd())}</cwd>`,
-    `  <shell>${xmlEscape(process.env.SHELL || '/bin/bash')}</shell>`,
-    `  <current_date>${now.toISOString().split('T')[0]}</current_date>`,
-    `  <current_time>${now.toISOString()}</current_time>`,
-    `  <platform>${process.platform}</platform>`,
-    '</environment_context>',
-  ].join('\n')
+  const snapshot = captureEnvSnapshot(cwd)
+  return formatFullEnvContext(snapshot)
 }
 
 /**
