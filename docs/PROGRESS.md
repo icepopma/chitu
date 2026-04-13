@@ -450,13 +450,21 @@ Client                                   Server
       - `codex-rs/core/src/spawn.rs` — `CODEX_SANDBOX` / `CODEX_SANDBOX_NETWORK_DISABLED` 环境变量
       - `docs/sandbox.md` — 文档入口
 
-  - [ ] **13.6 分层 AGENTS.md 收集** — root-to-CWD 所有目录遍历
+  - [x] **13.6 分层 AGENTS.md 收集** ✅ — root-to-CWD 所有目录遍历
     - **博客：** 文章 1 "Unrolling the Codex Agent Loop" — Input aggregation 章节
       > "look in each folder from the Git/project root of the cwd up to the cwd itself: add the contents of any of AGENTS.override.md, AGENTS.md"
     - **仓库：**
       - `codex-rs/core/hierarchical_agents_message.md` — 分层 AGENTS.md 规范（scope、优先级、冲突解决规则）
       - `codex-rs/instructions/src/user_instructions.rs` — 用户指令加载（含 AGENTS.md 目录遍历逻辑）
       - `docs/agents_md.md` — `child_agents_md` feature flag 说明
+    - **实现：**
+      - `src/context.ts`（修改）— 新增 `buildPathChain()` 和 `loadHierarchicalAgentsMd()`，修改 `buildProjectContext()` 使用分层收集
+        - `buildPathChain(projectRoot, cwd)` — 从 root 到 CWD 计算路径链
+        - `loadHierarchicalAgentsMd(projectRoot, cwd)` — 逐层扫描，每层用 `AGENTS.override.md` > `AGENTS.md` 优先级
+        - 每个文件独立包装 `<INSTRUCTIONS>` 标签，按层级顺序拼接
+        - 总大小限制 32KiB，超预算时截断最后文件
+      - `src/agent/loop.ts`（修改）— 系统提示补充分层收集说明
+    - **验证：** ✅ 38 个单元测试通过 + Playwright 端到端测试 2/2 通过
 
   - [x] **13.7 环境上下文改 XML 子元素格式** ✅ — `<cwd>...</cwd>` 替代 key-value
     - **博客：** 文章 1 "Unrolling the Codex Agent Loop" — Prompt construction 章节
@@ -677,6 +685,28 @@ Client                                   Server
 ```
 
 ## 里程碑记录
+
+### 2026-04-13：步骤 13.6 完成 — 分层 AGENTS.md 收集
+
+**完成了什么：** Agent 从项目根目录到当前工作目录逐层扫描 AGENTS.md，每层独立注入，支持 monorepo 中不同子目录有各自的 Agent 指令。
+
+**为什么重要：** 之前只读项目根的 AGENTS.md，整个项目共享一份指令。分层收集让子目录可以有专属指令（如后端 API 规范、前端组件规范），Agent 在哪工作就注入哪层指令，上下文更精准，token 不浪费。对齐 Codex 的 Input aggregation 机制。
+
+**怎么做的：**
+- `src/context.ts`（修改）— 核心改动：
+  - `buildPathChain(projectRoot, cwd)` — 计算从 root 到 CWD 的路径链（如 `[/project, /project/src, /project/src/server]`）
+  - `loadHierarchicalAgentsMd(projectRoot, cwd)` — 逐层扫描，每层按 `AGENTS.override.md` > `AGENTS.md` 优先级选一个文件
+  - 每个文件独立包装 `<INSTRUCTIONS>` 标签，按层级顺序拼接（深层在后，可覆盖浅层）
+  - 总大小限制 32KiB，超预算时截断最后文件
+  - `buildProjectContext()` 改用 `loadHierarchicalAgentsMd` 替代旧的单文件加载
+- `src/agent/loop.ts`（修改）— 系统提示补充分层收集说明
+
+**Code Review 修复：**
+- `loadAgentsMd` 去除 `existsSync` + `readFileSync` 的 TOCTOU 反模式，改用 `try/catch`
+- 预算截断时 `contentBudget <= 0` 的静默丢弃改为日志警告
+- overhead 计算添加注释说明假设条件
+
+**验证：** ✅ 38 个单元测试通过（路径链、分层收集、override 优先级、预算限制）+ Playwright 端到端测试 2/2 通过
 
 ### 2026-04-12：步骤 13.9 完成 — 回合间环境差异检测
 

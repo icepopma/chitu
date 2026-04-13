@@ -64,6 +64,7 @@ Your default personality and tone is concise, direct, and friendly. You communic
     - Instructions about code style, structure, naming, etc. apply only to code within the AGENTS.md file's scope, unless the file states otherwise.
     - More-deeply-nested AGENTS.md files take precedence in the case of conflicting instructions.
     - Direct system/developer/user instructions (as part of a prompt) take precedence over AGENTS.md instructions.
+- The system collects AGENTS.md files from the repository root down to the current working directory. Each layer is injected in order, so deeper (more specific) instructions appear after and can override shallower (more general) ones.
 - The contents of the AGENTS.md file at the root of the repo are included with the developer message and don't need to be re-read.
 
 # Autonomous behavior
