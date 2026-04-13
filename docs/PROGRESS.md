@@ -684,6 +684,83 @@ Client                                   Server
 14.10 Git 集成      ██░░░░░░░░  低优先
 ```
 
+---
+
+## 第 15 步：System Prompt 对齐 Codex
+
+> 来源：对齐 `codex-rs/core/gpt_5_1_prompt.md` 完整比对
+> 目标：补齐赤兔 system prompt 中缺失的行为指导，提升 Agent 交互质量
+
+### 差距分析（2026-04-13）
+
+| 子步骤 | 内容 | 差距程度 | 说明 |
+|--------|------|---------|------|
+| 15.1 | Responsiveness（用户更新规范） | **大** | Codex 有完整的 User Updates Spec：发送简短更新的时机/频率、长时间工作时的"埋头工作"通知、大量示例。赤兔完全没有 — Agent 在多步工具调用时用户看到沉默。 |
+| 15.2 | Task execution（任务执行准则） | **大** | Codex 有一整套编码行为规范：修复根本原因、不修复无关 bug、不自动 git commit、不加 license 头、apply_patch 后不重读文件、不用单字母变量等。赤兔完全没有。 |
+| 15.3 | Final message 规范（verbosity 控制 + 不要做什么） | **中** | Codex 有 verbosity 分级：小改动 ≤5 句、中等 ≤6 bullets、大改动按文件汇总；以及"不展示文件内容、不贴 before/after"等规则。赤兔只有基本格式规范。 |
+| 15.4 | Ambition vs precision（场景区分） | **中** | Codex 区分"全新项目大胆创意"vs"已有代码库精确修改"。赤兔只有通用自主性指令，没有这个区分。 |
+| 15.5 | Planning 示例补充 | **小** | Codex 有 3 个高质量 + 3 个低质量示例，赤兔各 1 个。数量差异，结构一致。 |
+
+### 优先级排序
+
+```
+15.1 Responsiveness  ██████████  高优先（用户体验核心 — Agent 长时间工作沉默是最大痛点）
+15.2 Task execution  █████████░  高优先（编码行为规范 — 防止 Agent 做不该做的事）
+15.3 Final message   ███████░░░  中优先（回复质量控制）
+15.4 Ambition/prec.  ████░░░░░░  中低优先（场景判断指导）
+15.5 Plan examples   ██░░░░░░░░  低优先（补充示例即可）
+```
+
+### 依赖关系
+
+```
+15.1（无依赖，直接改 system prompt）
+15.2（无依赖，直接改 system prompt）
+15.3（无依赖，直接改 system prompt）
+15.4（无依赖，直接改 system prompt）
+15.5（无依赖，直接改 system prompt）
+```
+
+所有子步骤互不依赖，可以一次性完成。修改集中在 `src/agent/loop.ts` 的 `buildSystemPrompt()` 函数。
+
+### 验证方式
+
+1. 对比更新后的 system prompt 与 Codex `gpt_5_1_prompt.md` 的章节覆盖
+2. 启动服务端到端测试，验证 Agent 在多步任务中发送进度更新
+3. 验证 Agent 不再自动展示文件内容、不修复无关 bug
+
+- [ ] **15.1 Responsiveness（用户更新规范）**
+  - **Codex：** `codex-rs/core/gpt_5_1_prompt.md` — Responsiveness 章节（User Updates Spec）
+    > "Send short updates (1–2 sentences) whenever there is a meaningful, important insight"
+    > "If you expect a longer heads‑down stretch, post a brief heads‑down note"
+  - **赤兔现状：** 无任何进度更新指导。Agent 在多步工具调用期间用户看到完全空白。
+
+- [ ] **15.2 Task execution（任务执行准则）**
+  - **Codex：** `codex-rs/core/gpt_5_1_prompt.md` — Task execution 章节
+    > "Fix the problem at the root cause rather than applying surface-level patches"
+    > "Do not attempt to fix unrelated bugs or broken tests"
+    > "Do not `git commit` your changes unless explicitly requested"
+    > "Do not add inline comments within code unless explicitly requested"
+    > "Do not waste tokens by re-reading files after calling apply_patch"
+  - **赤兔现状：** 仅有工具使用指南（用 read_file 而非 cat），缺编码行为规范。
+
+- [ ] **15.3 Final message 规范**
+  - **Codex：** `codex-rs/core/gpt_5_1_prompt.md` — Presenting your work + Final answer structure
+    - Verbosity 分级：小改动 ≤5 句、中等 ≤6 bullets、大改动按文件汇总
+    - "Never include before/after pairs, full method bodies, or large code blocks"
+    - "Don't show file contents you've already written unless user asks"
+  - **赤兔现状：** 有基本格式规范（Section headers / Lists / Tone），缺 verbosity 控制和"不要做什么"。
+
+- [ ] **15.4 Ambition vs precision（场景区分）**
+  - **Codex：** `codex-rs/core/gpt_5_1_prompt.md` — Ambition vs precision 章节
+    > "For tasks with no prior context, be ambitious and creative"
+    > "In existing codebase, do exactly what the user asks with surgical precision"
+  - **赤兔现状：** 无此区分。
+
+- [ ] **15.5 Planning 示例补充**
+  - **Codex：** 3 个高质量 + 3 个低质量示例
+  - **赤兔现状：** 1 个高质量 + 1 个低质量示例
+
 ## 里程碑记录
 
 ### 2026-04-13：步骤 13.6 完成 — 分层 AGENTS.md 收集
