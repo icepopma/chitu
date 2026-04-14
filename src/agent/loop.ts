@@ -25,6 +25,7 @@ import { formatEnvDelta } from '../utils/env-diff.js'
 import { truncateOutput } from '../utils/truncate.js'
 import { compactMessages } from './compact.js'
 import { formatSkillInjection, type Skill } from '../skills/index.js'
+import { MemoryStorage } from '../memories/storage.js'
 
 // ===== 系统提示（对齐 Codex codex-rs/core/gpt_5_1_prompt.md） =====
 
@@ -376,7 +377,7 @@ export interface AgentResult {
  * - EnvDiff 对象: 只注入变化的字段（后续 turn，环境有变化）
  * - null: 跳过环境上下文注入（后续 turn，无变化）
  */
-export function buildInitialMessages(task: string, systemPrompt?: string, envDelta?: EnvDiff | null): Message[] {
+export function buildInitialMessages(task: string, systemPrompt?: string, envDelta?: EnvDiff | null, memoryText?: string | null): Message[] {
   const messages: Message[] = []
 
   // 1. system-role: 系统提示
@@ -385,7 +386,7 @@ export function buildInitialMessages(task: string, systemPrompt?: string, envDel
     content: systemPrompt || buildSystemPrompt(),
   })
 
-  // 2-3. AGENTS.md + Skills + 环境上下文
+  // 2-4. AGENTS.md + Skills + Memories + 环境上下文
   const { agentsMdMessage, skills, skillsSummary } = buildProjectContext()
 
   // AGENTS.md 作为 user-role 注入（对齐 Codex UserInstructions）
@@ -412,14 +413,20 @@ export function buildInitialMessages(task: string, systemPrompt?: string, envDel
     }
   }
 
-  // 3. 环境上下文 — v13.9: 支持 delta 注入
+  // v14.3: Memories 注入（对齐 Codex memories phase2 注入）
+  // memoryText 由调用方预加载，避免每次调用都读文件
+  if (memoryText) {
+    messages.push({ role: 'user', content: memoryText })
+  }
+
+  // 5. 环境上下文 — v13.9: 支持 delta 注入
   if (envDelta === undefined) {
     messages.push({ role: 'user', content: buildEnvironmentContext() })
   } else if (envDelta !== null) {
     messages.push({ role: 'user', content: formatEnvDelta(envDelta) })
   }
 
-  // 4. 用户实际输入
+  // 6. 用户实际输入
   messages.push({ role: 'user', content: task })
 
   return messages
@@ -479,8 +486,11 @@ export async function runAgentLoop(
   const toolDefinitions: ToolDefinition[] = tools.map(toolToDefinition)
 
   // 3. 构建初始上下文（对齐 Codex build_initial_context）
-  // v13.9: envDelta 控制环境上下文注入策略
-  const messages = buildInitialMessages(task, systemPrompt, envDelta)
+  // v14.3: 记忆预加载一次，不每次迭代都读文件
+  const memoryStorage = new MemoryStorage()
+  const allMemories = memoryStorage.load()
+  const memoryText = allMemories.length > 0 ? memoryStorage.formatForInjection(allMemories) : null
+  const messages = buildInitialMessages(task, systemPrompt, envDelta, memoryText)
 
   let totalTokens = 0
 

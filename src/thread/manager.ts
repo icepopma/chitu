@@ -17,6 +17,7 @@ import type { AgentResult } from '../agent/loop.js'
 import { LLMClient } from '../llm/client.js'
 import { createToolRegistry } from '../tools/index.js'
 import { captureEnvSnapshot, diffEnvSnapshots, type EnvSnapshot, type EnvDiff } from '../utils/env-diff.js'
+import { MemoryExtractor } from '../memories/extractor.js'
 
 /** runTurn 的配置选项 */
 export interface RunTurnOptions {
@@ -220,6 +221,9 @@ export class ThreadManager {
       thread.title = userInput.length > 30 ? userInput.slice(0, 30) + '...' : userInput
     }
 
+    // 记录 turn 开始前的 items 数量（用于记忆提取时只取当前 turn 的 items）
+    const itemsBeforeTurn = thread.items.length
+
     // 3. 添加 user_message Item
     const userItem = this.addItem(thread, {
       id: randomUUID(),
@@ -397,6 +401,18 @@ export class ThreadManager {
     thread.updatedAt = Date.now()
     this.emit({ type: 'turn/completed', turn, thread })
     await this.store.save(thread)
+
+    // v14.3: 记忆提取 — turn 成功完成后异步提取（不阻塞返回）
+    // 只提取当前 turn 的 items，避免重复处理历史
+    if (turn.status === 'completed' && !agentResult.cancelled) {
+      const turnItems = thread.items.slice(itemsBeforeTurn)
+      if (turnItems.length >= 2) {
+        const extractor = new MemoryExtractor(client)
+        extractor.extractFromItems(turnItems, threadId).catch(err => {
+          console.warn('[memories] 提取失败（非致命）:', err.message)
+        })
+      }
+    }
 
     return {
       content: agentResult.content,

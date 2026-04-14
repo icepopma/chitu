@@ -586,8 +586,8 @@ Client                                   Server
 
 ### IMPORTANT（重要能力差距）
 
-#### 14.3 Memories 系统 — 跨会话知识积累
-- **现状：** 每个 thread 独立，无法跨会话学习和复用知识
+#### 14.3 Memories 系统 — 跨会话知识积累 ✅
+- **现状：** 已实现完整的记忆提取 → 存储 → 注入链路
 - **Codex 做法：** 自动从对话中提取结构化记忆（架构决策、项目约定、已知问题），后续会话自动注入
 - **博客：** 文章 2 "Harness Engineering" — 品味不变式章节
 - **仓库：**
@@ -600,6 +600,32 @@ Client                                   Server
     - `citations.rs` — 引用追踪
   - `codex-rs/state/migrations/0006_memories.sql` — 数据库迁移
 - **为什么重要：** 让 Agent 随使用越来越聪明，避免重复犯同样的错误
+- **实现：**
+  - `src/memories/storage.ts`（新建）— MemoryStorage JSON 文件持久化
+    - 5 种记忆类别：preference / architecture / convention / failure / fact
+    - 原子写入（tmp + rename）、损坏备份、子串去重
+    - 上限 100 条记忆、注入上限 20 条、单条 500 字符
+    - `formatForInjection()` 按类别分组格式化
+  - `src/memories/extractor.ts`（新建）— MemoryExtractor LLM 驱动提取
+    - `extractFromItems()` — 将对话 items 转摘要 → 调 LLM 提取 → 去重存储
+    - 对话摘要压缩：工具结果截断、exit code 标记、预算 6000 字符
+    - 健壮 JSON 解析：markdown fence 剥离、`[...]` 正则兜底
+    - 非阻塞：提取失败不影响主流程（catch + warn）
+  - `src/memories/index.ts`（新建）— 模块入口
+  - `src/agent/loop.ts`（修改）— 记忆注入 + 预加载优化
+    - `buildInitialMessages()` 新增 `memoryText` 参数
+    - `runAgentLoop()` 在循环前加载一次记忆（避免每轮读文件）
+  - `src/thread/manager.ts`（修改）— turn 结束后异步提取
+    - 记录 `itemsBeforeTurn` 只提取当前 turn 的 items
+    - turn 成功完成且 ≥2 items 时异步触发提取
+- **简化决策（vs Codex）：**
+  - JSON 文件存储代替 SQLite（与 Chitu 文件模式一致）
+  - 单阶段提取代替两阶段（省略 Codex 的 consolidation 子 agent）
+  - 无 job 队列协调（单线程足够）
+  - 子串匹配去重代替向量嵌入（实用近似）
+- **验证：** ✅ Playwright 端到端测试 2/2 通过
+  - 记忆提取 + 注入：对话 1 产生 2 条偏好记忆 → 对话 2 Agent 引用记忆回答
+  - 短对话：不触发提取，系统正常运行
 
 #### 14.4 Hooks 系统 — 工具执行前后的钩子
 - **现状：** Agent 执行工具无拦截点，无法自定义策略
@@ -674,7 +700,7 @@ Client                                   Server
 ```
 14.1 Apply Patch    ██████████  ✅ 已完成（2026-04-12）
 14.2 流式输出       █████████░  ✅ 已完成（2026-04-12）
-14.3 Memories       ████████░░  中高优先（长期价值）
+14.3 Memories       ████████░░  ✅ 已完成（2026-04-14）
 14.4 Hooks          ███████░░░  中优先（可扩展性）
 14.5 MCP            ██████░░░░  中优先（生态扩展）
 14.6 File Watcher   █████░░░░░  中低优先
@@ -770,6 +796,39 @@ Client                                   Server
 - ✅ Playwright E2E 测试全部通过（10/10，含 1 个 retry）
 
 ## 里程碑记录
+
+### 2026-04-14：步骤 14.3 完成 — Memories 跨会话知识积累
+
+**完成了什么：** Agent 能从对话中自动提取记忆（用户偏好、架构决策、项目约定、已知失败、关键事实），在新对话中自动注入，实现跨会话学习。
+
+**为什么重要：** 之前每个 thread 完全独立，Agent 无法记住任何跨会话信息。比如用户在对话 1 中说"我用 pnpm"，Agent 在对话 2 中完全不知道。有了记忆系统，Agent 越用越了解用户和项目。
+
+**怎么做的：**
+- `src/memories/storage.ts`（新建）— JSON 文件持久化
+  - 5 种记忆类别，原子写入（tmp + rename），损坏备份，子串匹配去重
+  - 上限 100 条、注入上限 20 条、单条 500 字符
+- `src/memories/extractor.ts`（新建）— LLM 驱动提取
+  - 对话 items → 摘要 → LLM 提取 → 去重存储
+  - 健壮 JSON 解析（markdown fence 剥离 + 正则兜底）
+  - 非阻塞：提取失败不影响主流程
+- `src/agent/loop.ts`（修改）— 记忆注入到 `buildInitialMessages()`
+  - 循环前预加载一次记忆（避免每轮读文件）
+- `src/thread/manager.ts`（修改）— turn 结束后异步提取
+  - 只提取当前 turn 的 items（`itemsBeforeTurn` 快照）
+  - turn 成功且 ≥2 items 时异步触发
+
+**Code Review 修复：**
+- 损坏文件备份而非静默丢弃（`renameSync` 到 `.corrupt` 备份）
+- 只提取当前 turn 的 items 而非整个 thread 历史（避免重复处理）
+- 预加载记忆避免每次 `buildInitialMessages` 读文件
+- 原子写入（tmp + rename）防止断电损坏
+- 子串匹配去重捕获语义重复（如"用户偏好 X" vs "用户偏好 X 的 Y"）
+- 健壮 JSON 解析处理 LLM 返回 markdown fence 的情况
+- 注入上限 20 条避免上下文膨胀
+
+**验证：** ✅ Playwright E2E 测试 2/2 通过
+- 对话 1 产生 2 条偏好记忆（tabs 缩进 + pnpm）→ 对话 2 Agent 引用记忆回答"根据之前的对话记录"
+- 短对话（"1+1=?"）不触发提取
 
 ### 2026-04-14：步骤 15 完成 — System Prompt 对齐 Codex
 
