@@ -729,39 +729,65 @@ Client                                   Server
 2. 启动服务端到端测试，验证 Agent 在多步任务中发送进度更新
 3. 验证 Agent 不再自动展示文件内容、不修复无关 bug
 
-- [ ] **15.1 Responsiveness（用户更新规范）**
+- [x] **15.1 Responsiveness（用户更新规范）** ✅
   - **Codex：** `codex-rs/core/gpt_5_1_prompt.md` — Responsiveness 章节（User Updates Spec）
-    > "Send short updates (1–2 sentences) whenever there is a meaningful, important insight"
-    > "If you expect a longer heads‑down stretch, post a brief heads‑down note"
-  - **赤兔现状：** 无任何进度更新指导。Agent 在多步工具调用期间用户看到完全空白。
+  - **实现：** `src/agent/loop.ts` — `buildSystemPrompt()` 新增 `## Responsiveness` 章节
+    - Frequency & Length 规则（1-2 句短更新、埋头工作通知）
+    - Tone 规则（友好、自信、高级工程师风格）
+    - Content 规则（首次工具调用前给计划、探索时分享发现、计划变更时明确说明）
 
-- [ ] **15.2 Task execution（任务执行准则）**
+- [x] **15.2 Task execution（任务执行准则）** ✅
   - **Codex：** `codex-rs/core/gpt_5_1_prompt.md` — Task execution 章节
-    > "Fix the problem at the root cause rather than applying surface-level patches"
-    > "Do not attempt to fix unrelated bugs or broken tests"
-    > "Do not `git commit` your changes unless explicitly requested"
-    > "Do not add inline comments within code unless explicitly requested"
-    > "Do not waste tokens by re-reading files after calling apply_patch"
-  - **赤兔现状：** 仅有工具使用指南（用 read_file 而非 cat），缺编码行为规范。
+  - **实现：** 新增 `# Task execution` 章节
+    - 前言段落：不要猜测或编造答案，坚持到底
+    - 10 条编码准则（根本原因修复、不修复无关 bug、不自动 commit、不加 license 头等）
+    - `## Testing philosophy` 子章节 + 审批模式感知测试指导
 
-- [ ] **15.3 Final message 规范**
+- [x] **15.3 Final message 规范** ✅
   - **Codex：** `codex-rs/core/gpt_5_1_prompt.md` — Presenting your work + Final answer structure
-    - Verbosity 分级：小改动 ≤5 句、中等 ≤6 bullets、大改动按文件汇总
-    - "Never include before/after pairs, full method bodies, or large code blocks"
-    - "Don't show file contents you've already written unless user asks"
-  - **赤兔现状：** 有基本格式规范（Section headers / Lists / Tone），缺 verbosity 控制和"不要做什么"。
+  - **实现：** 重构为 `# Presenting your work` + `## Final answer structure and style guidelines`
+    - 新增 `## Sharing progress updates` 子章节
+    - Verbosity 分级（小改动 ≤5 句、中等 ≤6 bullets、大改动按文件汇总）
+    - "Don't" 规则列表（不嵌套 bullets、不输出 ANSI、不展示已写文件内容）
+    - Monospace vs Bold 选择规则
 
-- [ ] **15.4 Ambition vs precision（场景区分）**
+- [x] **15.4 Ambition vs precision（场景区分）** ✅
   - **Codex：** `codex-rs/core/gpt_5_1_prompt.md` — Ambition vs precision 章节
-    > "For tasks with no prior context, be ambitious and creative"
-    > "In existing codebase, do exactly what the user asks with surgical precision"
-  - **赤兔现状：** 无此区分。
+  - **实现：** 新增 `## Ambition vs. Precision` — 区分全新项目（大胆创意）vs 已有代码库（精确修改）
 
-- [ ] **15.5 Planning 示例补充**
-  - **Codex：** 3 个高质量 + 3 个低质量示例
-  - **赤兔现状：** 1 个高质量 + 1 个低质量示例
+- [x] **15.5 Planning 示例补充** ✅
+  - **实现：** 从 1+1 扩充到 3+2（3 个高质量 + 2 个低质量示例，对齐 Codex）
+
+### 15.0 其他对齐改动
+
+- **Autonomy and Persistence** — 重写为 Codex 原文，补充 "or some other intent that makes it clear that code should not be written" 条件从句
+- **Tool guidelines** — 新增 `rg` 搜索偏好规则
+- **注释更新** — JSDoc 从 6 节扩展到 11 节，文件头注释更新为 v15
+
+### 验证
+
+- ✅ TypeScript 编译通过
+- ✅ Playwright E2E 测试全部通过（10/10，含 1 个 retry）
 
 ## 里程碑记录
+
+### 2026-04-14：步骤 15 完成 — System Prompt 对齐 Codex
+
+**完成了什么：** 完整重写 `buildSystemPrompt()`，从 6 节结构扩展到 11 节，对齐 Codex `gpt_5_1_prompt.md` 的行为指导。
+
+**为什么重要：** 之前的 system prompt 只有基本的身份定义和格式规范，缺少行为指导。Agent 在长时间工作中沉默（无 Responsiveness）、会修复无关 bug（无 Task execution）、回复冗长或不一致（无 Verbosity 控制）、不区分新建 vs 修改场景（无 Ambition vs Precision）。补齐这些后，Agent 的交互质量应显著提升。
+
+**怎么做的：**
+- `src/agent/loop.ts`（修改）— `buildSystemPrompt()` 完整重写
+  - 新增 Responsiveness：用户更新频率/语气/内容规范
+  - 新增 Task execution：10 条编码准则 + 不要猜测前言
+  - 新增 Ambition vs Precision：新建 vs 修改场景区分
+  - 重构 Presenting your work：Verbosity 分级 + Don't 规则 + progress updates
+  - 扩充 Planning 示例：3 高质量 + 2 低质量
+  - 更新 Autonomy：补全 Codex 条件从句
+  - 新增 Testing philosophy + 审批模式感知
+
+**验证：** ✅ TypeScript 编译通过 + Playwright E2E 测试 10/10 通过
 
 ### 2026-04-13：步骤 13.6 完成 — 分层 AGENTS.md 收集
 
