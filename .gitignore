@@ -28,3 +28,10 @@ src/gen-cover.ts
 
 # 博客草稿（含大图片）
 blog/
+blog-posts/
+
+# Vite 脚手架产物
+web-ui/README.md
+web-ui/public/icons.svg
+web-ui/src/App.css
+web-ui/src/assets/

@@ -152,7 +152,7 @@ export class LLMClient {
       model: this.model,
       messages,
       stream: true,
-      max_tokens: 4096,
+      max_tokens: 16384,
       stream_options: { include_usage: true },
     }
 
