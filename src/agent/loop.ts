@@ -572,12 +572,44 @@ export async function runAgentLoop(
       }
 
       const toolName = tc.function.name
-      const args = JSON.parse(tc.function.arguments)
-      const tool = toolMap.get(toolName)
-
+      let args: Record<string, unknown>
       let resultContent: string
       let isError: boolean
       let exitCode: number | undefined
+
+      try {
+        args = JSON.parse(tc.function.arguments)
+      } catch {
+        // LLM 流式传输中 tool_call arguments 可能拼接不完整（长内容被截断）
+        // 尝试修复：补全未闭合的字符串和对象
+        let repaired = tc.function.arguments.trimEnd()
+        if (repaired.startsWith('{') && !repaired.endsWith('}')) {
+          // 补全未闭合的引号和大括号
+          if (repaired.endsWith('"') === false && repaired.lastIndexOf('"') > repaired.lastIndexOf('\\"')) {
+            repaired += '"'
+          }
+          repaired += '}'
+          try {
+            args = JSON.parse(repaired)
+          } catch {
+            // 修复失败，返回错误让 LLM 重试
+            resultContent = `错误：LLM 返回的工具参数 JSON 不完整（${tc.function.arguments.length} 字符），无法解析。请尝试用更短的内容重试。`
+            isError = true
+            exitCode = 1
+            toolResults.push({ toolName, args: {}, result: resultContent, isError, exitCode })
+            messages.push({ role: 'tool', content: truncateOutput(resultContent), tool_call_id: tc.id })
+            continue
+          }
+        } else {
+          resultContent = `错误：LLM 返回的工具参数 JSON 不完整（${tc.function.arguments.length} 字符），无法解析。请尝试用更短的内容重试。`
+          isError = true
+          exitCode = 1
+          toolResults.push({ toolName, args: {}, result: resultContent, isError, exitCode })
+          messages.push({ role: 'tool', content: truncateOutput(resultContent), tool_call_id: tc.id })
+          continue
+        }
+      }
+      const tool = toolMap.get(toolName)
 
       if (!tool) {
         resultContent = `错误：未知工具 "${toolName}"`

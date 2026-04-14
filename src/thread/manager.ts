@@ -303,7 +303,12 @@ export class ThreadManager {
             completeStreamingItem(step.content || '')
 
             for (const tc of step.toolCalls) {
-              const toolArgs = JSON.parse(tc.function.arguments)
+              let toolArgs: Record<string, unknown> = {}
+              try {
+                toolArgs = JSON.parse(tc.function.arguments)
+              } catch {
+                // LLM 流式传输中 tool_call arguments 可能拼接不完整
+              }
 
               this.addItem(thread, {
                 id: randomUUID(),
@@ -317,13 +322,14 @@ export class ThreadManager {
                 completedAt: Date.now(),
               })
 
-              if (tc.function.name === 'update_plan' && toolArgs.plan) {
-                const plan: PlanStep[] = toolArgs.plan
+              if (tc.function.name === 'update_plan' && Array.isArray(toolArgs.plan)) {
+                const plan = toolArgs.plan as PlanStep[]
+                const explanation = typeof toolArgs.explanation === 'string' ? toolArgs.explanation : undefined
                 thread.currentPlan = plan
                 this.emit({
                   type: 'plan/updated',
                   plan,
-                  explanation: toolArgs.explanation,
+                  explanation,
                   thread,
                 })
               }
