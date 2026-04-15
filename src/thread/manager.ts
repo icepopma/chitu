@@ -18,6 +18,7 @@ import { LLMClient } from '../llm/client.js'
 import { createToolRegistry } from '../tools/index.js'
 import { captureEnvSnapshot, diffEnvSnapshots, type EnvSnapshot, type EnvDiff } from '../utils/env-diff.js'
 import { MemoryExtractor } from '../memories/extractor.js'
+import { HookDispatcher } from '../hooks/dispatcher.js'
 
 /** runTurn 的配置选项 */
 export interface RunTurnOptions {
@@ -31,6 +32,8 @@ export interface RunTurnOptions {
   signal?: AbortSignal
   /** 审批回调 — 高风险命令需要用户确认时调用 */
   onApprovalNeeded?: (toolName: string, args: Record<string, unknown>) => Promise<boolean>
+  /** v14.4: Hook 分发器 */
+  hookDispatcher?: HookDispatcher
 }
 
 /** runTurn 的返回结果 */
@@ -53,10 +56,17 @@ export class ThreadManager {
   private handler?: EventHandler
   /** 每个 thread 最后一次 turn 的环境快照（用于 13.9 回合间差异检测） */
   private envSnapshots = new Map<string, EnvSnapshot>()
+  /** v14.4: Hook 分发器 */
+  private hookDispatcher?: HookDispatcher
 
   constructor(dataDir?: string) {
     this.store = new ThreadStore(dataDir)
     this.recorder = new RolloutRecorder(dataDir ? `${dataDir}/../rollouts` : undefined)
+  }
+
+  /** 设置 Hook 分发器 */
+  setHookDispatcher(dispatcher: HookDispatcher): void {
+    this.hookDispatcher = dispatcher
   }
 
   /** 设置事件监听器（Message Processor 用这个接收事件） */
@@ -101,6 +111,12 @@ export class ThreadManager {
     }
     await this.store.save(thread)
     this.emit({ type: 'thread/started', thread })
+
+    // v14.4: session_start hook
+    if (this.hookDispatcher) {
+      this.hookDispatcher.dispatchSessionEvent('session_start', { threadId: thread.id }).catch(() => {})
+    }
+
     return thread
   }
 
@@ -123,6 +139,11 @@ export class ThreadManager {
       thread.updatedAt = Date.now()
       await this.store.save(thread)
       this.envSnapshots.delete(threadId)
+
+      // v14.4: session_end hook
+      if (this.hookDispatcher) {
+        await this.hookDispatcher.dispatchSessionEvent('session_end', { threadId })
+      }
     }
   }
 
@@ -224,12 +245,25 @@ export class ThreadManager {
     // 记录 turn 开始前的 items 数量（用于记忆提取时只取当前 turn 的 items）
     const itemsBeforeTurn = thread.items.length
 
-    // 3. 添加 user_message Item
+    // v14.4: user_prompt_submit hook — 可修改用户输入
+    const dispatcher = options?.hookDispatcher ?? this.hookDispatcher
+    let effectiveInput = userInput
+    if (dispatcher) {
+      const hookResult = await dispatcher.dispatchUserPromptSubmit({
+        prompt: userInput,
+        threadId,
+      })
+      if (hookResult.modifiedPrompt) {
+        effectiveInput = hookResult.modifiedPrompt
+      }
+    }
+
+    // 3. 添加 user_message Item（用可能被 hook 修改过的输入）
     const userItem = this.addItem(thread, {
       id: randomUUID(),
       type: 'user_message',
       status: 'completed',
-      content: userInput,
+      content: effectiveInput,
       startedAt: Date.now(),
       completedAt: Date.now(),
     })
@@ -277,13 +311,14 @@ export class ThreadManager {
     }
 
     try {
-      agentResult = await runAgentLoop(userInput, {
+      agentResult = await runAgentLoop(effectiveInput, {
         client,
         tools,
         systemPrompt: options?.systemPrompt || buildSystemPrompt(),
         maxIterations: options?.maxIterations || 50,
         signal: options?.signal,
         onApprovalNeeded: options?.onApprovalNeeded,
+        hookDispatcher: dispatcher,
         envDelta,
         onStreamDelta: (itemId, delta) => {
           if (!streamingItemId) {

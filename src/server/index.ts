@@ -14,6 +14,7 @@
 import { WebSocketServer, type WebSocket } from 'ws'
 import { ThreadManager } from '../thread/manager.js'
 import { MessageProcessor } from './message-processor.js'
+import { HookDispatcher } from '../hooks/dispatcher.js'
 import { parseMessage, createError, PARSE_ERROR } from './json-rpc.js'
 
 export interface AppServerOptions {
@@ -24,6 +25,7 @@ export interface AppServerOptions {
 export function createAppServer(options?: AppServerOptions) {
   const port = options?.port || 8080
   const manager = new ThreadManager(options?.dataDir)
+  manager.setHookDispatcher(new HookDispatcher())
   const processor = new MessageProcessor(manager)
 
   const wss = new WebSocketServer({ port })

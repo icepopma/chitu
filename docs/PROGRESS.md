@@ -627,8 +627,8 @@ Client                                   Server
   - 记忆提取 + 注入：对话 1 产生 2 条偏好记忆 → 对话 2 Agent 引用记忆回答
   - 短对话：不触发提取，系统正常运行
 
-#### 14.4 Hooks 系统 — 工具执行前后的钩子
-- **现状：** Agent 执行工具无拦截点，无法自定义策略
+#### 14.4 Hooks 系统 — 工具执行前后的钩子 ✅
+- **现状：** 已实现 5 个 hook 事件点，用户通过 JSON 文件配置 shell 命令
 - **Codex 做法：** 5 个 hook 事件点，用户可配置 shell 命令作为钩子
 - **博客：** 未直接提及（属于 Codex CLI 高级配置）
 - **仓库：**
@@ -641,6 +641,53 @@ Client                                   Server
     - `src/events/user_prompt_submit.rs` — 用户输入提交钩子（可修改 prompt）
   - `schema/generated/` — 每个钩子的 JSON Schema 输入/输出定义
 - **为什么重要：** 企业级 Agent 的必备能力（合规检查、自定义审批、日志审计）
+- **实现：**
+  - `src/hooks/types.ts`（新建）— 类型定义
+    - 5 种 HookEvent：pre_tool_use / post_tool_use / session_start / session_end / user_prompt_submit
+    - 每种事件的 Input/Output 接口（PreToolUseInput/Output, PostToolUseInput/Output 等）
+    - HookResult 通用返回类型
+  - `src/hooks/dispatcher.ts`（新建）— HookDispatcher 分发器
+    - JSON 配置文件加载（`chitu-data/hooks.json`）
+    - Shell 命令执行（`sh -c`），stdin 传入 JSON，stdout 解析结果
+    - Fail-open 策略：hook 失败不阻断主流程
+    - 超时保护（默认 5 秒）
+    - `dispatchPreToolUse()` — 可 block 或 modify args
+    - `dispatchPostToolUse()` — 可 modify result
+    - `dispatchUserPromptSubmit()` — 可 modify prompt
+    - `dispatchSessionEvent()` — 单向通知
+    - `reload()` 支持热更新配置
+  - `src/hooks/index.ts`（新建）— 模块入口
+  - `src/agent/loop.ts`（修改）— Agent Loop 集成
+    - `AgentLoopConfig` 新增 `hookDispatcher` 字段
+    - 工具执行前：`dispatchPreToolUse()` → block 则跳过，modify 则更新参数
+    - 工具执行后：`dispatchPostToolUse()` → 可修改输出
+  - `src/thread/manager.ts`（修改）— ThreadManager 集成
+    - `setHookDispatcher()` 设置全局分发器
+    - `runTurn()` 中 `dispatchUserPromptSubmit()` 修改用户输入
+    - `create()` 中 `dispatchSessionEvent('session_start')` 通知
+    - `archive()` 中 `dispatchSessionEvent('session_end')` 通知
+  - `src/server/index.ts`（修改）— 服务端初始化 HookDispatcher
+- **与审批系统的关系：**
+  - Hooks 和审批是独立的层，顺序执行：pre_tool_use hooks → 审批检查 → 工具执行 → post_tool_use hooks
+  - 审批是 hooks 的一个特例（只能允许/拒绝）
+  - Hooks 能做审批能做的所有事，但还能修改参数/输出/用户输入
+- **配置格式示例（`chitu-data/hooks.json`）：**
+  ```json
+  {
+    "hooks": {
+      "pre_tool_use": [
+        { "name": "block-rm", "command": "echo '{\"action\": \"block\"}'", "timeout": 5000 }
+      ],
+      "post_tool_use": [
+        { "name": "log", "command": "cat >> /tmp/chitu-audit.log", "enabled": true }
+      ]
+    }
+  }
+  ```
+- **验证：** ✅ Playwright 端到端测试 3/3 通过
+  - Hook block：pre_tool_use 返回 block → 工具被阻止 → Agent 优雅处理
+  - 无配置：无 hooks.json 时系统正常运行
+  - Hook proceed：pre_tool_use 返回 proceed → 工具正常执行
 
 #### 14.5 MCP (Model Context Protocol) 集成
 - **现状：** 工具系统完全内置，无法接入外部工具服务
@@ -701,7 +748,7 @@ Client                                   Server
 14.1 Apply Patch    ██████████  ✅ 已完成（2026-04-12）
 14.2 流式输出       █████████░  ✅ 已完成（2026-04-12）
 14.3 Memories       ████████░░  ✅ 已完成（2026-04-14）
-14.4 Hooks          ███████░░░  中优先（可扩展性）
+14.4 Hooks          ███████░░░  ✅ 已完成（2026-04-15）
 14.5 MCP            ██████░░░░  中优先（生态扩展）
 14.6 File Watcher   █████░░░░░  中低优先
 14.7 多 Shell       ███░░░░░░░  低优先
@@ -796,6 +843,42 @@ Client                                   Server
 - ✅ Playwright E2E 测试全部通过（10/10，含 1 个 retry）
 
 ## 里程碑记录
+
+### 2026-04-15：步骤 14.4 完成 — Hooks 工具执行钩子系统
+
+**完成了什么：** 实现了 5 个 hook 事件点，用户可通过 JSON 文件配置 shell 命令，在工具执行前后、会话生命周期、用户输入提交时插入自定义逻辑。
+
+**为什么重要：** Hooks 是审批系统的通用版。审批只能允许/拒绝，hooks 还能修改工具参数、修改输出内容、修改用户输入。企业场景下可以用来做合规检查、日志审计、敏感信息脱敏等。
+
+**怎么做的：**
+- `src/hooks/types.ts`（新建）— 5 种事件类型的 Input/Output 接口
+- `src/hooks/dispatcher.ts`（新建）— HookDispatcher 分发器
+  - JSON 配置加载（`chitu-data/hooks.json`）
+  - Shell 命令执行（stdin JSON 输入，stdout JSON 输出）
+  - Fail-open：hook 失败不阻断主流程
+  - 超时保护（默认 5 秒）
+- `src/hooks/index.ts`（新建）— 模块入口
+- `src/agent/loop.ts`（修改）— pre/post tool hooks 集成
+  - 工具执行前：可 block（阻止）或 modify（修改参数）
+  - 工具执行后：可 modify（修改输出）
+- `src/thread/manager.ts`（修改）— session/prompt hooks 集成
+  - user_prompt_submit：可修改用户输入
+  - session_start/end：单向通知
+- `src/server/index.ts`（修改）— 初始化 HookDispatcher
+
+**Code Review 修复：**
+- user_prompt_submit hook 使用错误的 dispatcher 引用（用 options 而非 this.hookDispatcher），导致服务端设置的 hook 永远不触发
+- type-only import 清理（HookDispatcher）
+- nullish coalescing 替代 truthy fallback（`??` vs `||`）
+- 复用 SessionStartInput 类型替代内联类型
+- 移除未使用的 stderr 参数
+
+**验证：** ✅ Playwright E2E 测试 3/3 通过
+- Hook block：pre_tool_use 阻止工具 → Agent 优雅处理
+- 无配置：系统正常运行
+- Hook proceed：工具正常执行
+
+### 2026-04-14：步骤 14.3 完成 — Memories 跨会话知识积累
 
 ### 2026-04-14：步骤 14.3 完成 — Memories 跨会话知识积累
 

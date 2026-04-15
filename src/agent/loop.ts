@@ -26,6 +26,7 @@ import { truncateOutput } from '../utils/truncate.js'
 import { compactMessages } from './compact.js'
 import { formatSkillInjection, type Skill } from '../skills/index.js'
 import { MemoryStorage } from '../memories/storage.js'
+import type { HookDispatcher } from '../hooks/dispatcher.js'
 
 // ===== 系统提示（对齐 Codex codex-rs/core/gpt_5_1_prompt.md） =====
 
@@ -322,6 +323,10 @@ export interface AgentLoopConfig {
    * 审批回调 — 当工具需要用户确认时调用
    */
   onApprovalNeeded?: (toolName: string, args: Record<string, unknown>) => Promise<boolean>
+  /**
+   * v14.4: Hook 分发器 — 工具执行前后的拦截点
+   */
+  hookDispatcher?: HookDispatcher
   /**
    * v13.9: 环境差异 — 回合间只注入变化的字段
    * - undefined（默认）: 注入完整环境上下文
@@ -626,6 +631,23 @@ export async function runAgentLoop(
         isError = true
         exitCode = 1
       } else {
+        // v14.4: pre_tool_use hook — 工具执行前的拦截点
+        if (config.hookDispatcher) {
+          const hookResult = await config.hookDispatcher.dispatchPreToolUse({ toolName, args })
+          if (hookResult.blocked) {
+            resultContent = `操作被 Hook 拦截: ${hookResult.blockReason || '未提供原因'}`
+            isError = true
+            exitCode = 1
+            toolResults.push({ toolName, args, result: resultContent, isError, exitCode })
+            const truncated = truncateOutput(resultContent)
+            messages.push({ role: 'tool', content: truncated, tool_call_id: tc.id })
+            continue
+          }
+          if (hookResult.modifiedArgs) {
+            args = hookResult.modifiedArgs
+          }
+        }
+
         // v12: 审批检查 — 高风险命令需要用户确认
         if (tool.needsApproval?.(args)) {
           if (config.onApprovalNeeded) {
@@ -652,6 +674,16 @@ export async function runAgentLoop(
           resultContent = `工具执行出错: ${err.message}`
           isError = true
           exitCode = 1
+        }
+
+        // v14.4: post_tool_use hook — 工具执行后可修改输出
+        if (config.hookDispatcher) {
+          const hookResult = await config.hookDispatcher.dispatchPostToolUse({
+            toolName, args, result: resultContent, isError, exitCode,
+          })
+          if (hookResult.modifiedResult !== undefined) {
+            resultContent = hookResult.modifiedResult
+          }
         }
       }
 
