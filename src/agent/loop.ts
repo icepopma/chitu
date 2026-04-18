@@ -27,6 +27,7 @@ import { compactMessages } from './compact.js'
 import { formatSkillInjection, type Skill } from '../skills/index.js'
 import { MemoryStorage } from '../memories/storage.js'
 import type { HookDispatcher } from '../hooks/dispatcher.js'
+import { loadMilestoneContextText } from '../tools/milestone-plan/context.js'
 
 // ===== 系统提示（对齐 Codex codex-rs/core/gpt_5_1_prompt.md） =====
 
@@ -143,6 +144,7 @@ After making ANY code changes, you MUST follow this loop:
 - ` + '`' + `npm test` + '`' + ` or ` + '`' + `npm run test` + '`' + ` — Run test suite
 - ` + '`' + `npm run build` + '`' + ` — Build the project
 - Choose the command appropriate for the project's test framework
+- When a milestone is active, its verification commands are the authoritative validation — run those first
 
 ## Testing philosophy
 Start with tests most specific to the code you changed, then broaden. If there's no test for the changed code and adjacent patterns suggest a logical place, you may add one. Do not add tests to codebases with no tests. Do not attempt to fix unrelated test failures.
@@ -232,6 +234,24 @@ Use a plan when:
 3. Make styles look good
 
 If you need to write a plan, only write high quality plans, not low quality ones.
+
+# Milestone-Driven Execution
+
+When a milestone plan is present in the project (indicated by the "Current Milestone" context section), follow this workflow:
+
+1. Use ` + '`' + `milestone_plan next` + '`' + ` to get the current or next milestone
+2. Use ` + '`' + `milestone_plan start` + '`' + ` (with milestone ID) to mark it as in_progress
+3. Implement the changes described in the milestone scope and key files
+4. Run ALL verification commands from the milestone before completing it
+5. Use ` + '`' + `milestone_plan complete` + '`' + ` when all acceptance criteria pass (this auto-creates a git checkpoint)
+6. Use ` + '`' + `milestone_plan fail` + '`' + ` if a milestone cannot be completed (provide explanation)
+
+Rules:
+- Only one milestone can be in_progress at a time
+- Complete the current milestone before moving to the next
+- If verification fails, fix the issue and re-run verification before completing
+- If a milestone fails, you can use ` + '`' + `git_rollback` + '`' + ` to revert to the last checkpoint and try a different approach
+- Milestone completion automatically creates a git checkpoint
 
 # Presenting your work
 
@@ -382,7 +402,7 @@ export interface AgentResult {
  * - EnvDiff 对象: 只注入变化的字段（后续 turn，环境有变化）
  * - null: 跳过环境上下文注入（后续 turn，无变化）
  */
-export function buildInitialMessages(task: string, systemPrompt?: string, envDelta?: EnvDiff | null, memoryText?: string | null): Message[] {
+export function buildInitialMessages(task: string, systemPrompt?: string, envDelta?: EnvDiff | null, memoryText?: string | null, milestoneText?: string | null): Message[] {
   const messages: Message[] = []
 
   // 1. system-role: 系统提示
@@ -422,6 +442,11 @@ export function buildInitialMessages(task: string, systemPrompt?: string, envDel
   // memoryText 由调用方预加载，避免每次调用都读文件
   if (memoryText) {
     messages.push({ role: 'user', content: memoryText })
+  }
+
+  // v16: Milestone context injection — 注入当前里程碑信息
+  if (milestoneText) {
+    messages.push({ role: 'user', content: milestoneText })
   }
 
   // 5. 环境上下文 — v13.9: 支持 delta 注入
@@ -495,7 +520,9 @@ export async function runAgentLoop(
   const memoryStorage = new MemoryStorage()
   const allMemories = memoryStorage.load()
   const memoryText = allMemories.length > 0 ? memoryStorage.formatForInjection(allMemories) : null
-  const messages = buildInitialMessages(task, systemPrompt, envDelta, memoryText)
+  // v16: 里程碑上下文预加载
+  const milestoneText = loadMilestoneContextText()
+  const messages = buildInitialMessages(task, systemPrompt, envDelta, memoryText, milestoneText)
 
   let totalTokens = 0
 

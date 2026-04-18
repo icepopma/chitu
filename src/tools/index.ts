@@ -28,6 +28,8 @@ export type { Plugin, PluginContext, PluginMeta, PluginInfo } from './plugin-typ
 export { execPlugin } from './plugins/exec/index.js'
 export { filesPlugin } from './plugins/files/index.js'
 export { planPlugin } from './plugins/plan/index.js'
+export { milestonePlugin } from './plugins/milestone/index.js'
+export { gitPlugin } from './plugins/git/index.js'
 
 // 导出原有工具（保持向后兼容）
 export { execTool } from './exec.js'
@@ -38,6 +40,8 @@ export { updatePlanTool } from './plan.js'
 import { execPlugin } from './plugins/exec/index.js'
 import { filesPlugin } from './plugins/files/index.js'
 import { planPlugin } from './plugins/plan/index.js'
+import { milestonePlugin } from './plugins/milestone/index.js'
+import { gitPlugin } from './plugins/git/index.js'
 
 class ToolRegistry {
   private tools: Map<string, Tool> = new Map()
@@ -90,6 +94,8 @@ export function createToolRegistry(): ToolRegistry {
   loader.register(execPlugin)
   loader.register(filesPlugin)
   loader.register(planPlugin)
+  loader.register(milestonePlugin)
+  loader.register(gitPlugin)
 
   return new ToolRegistry(loader)
 }
@@ -106,6 +112,8 @@ export async function createToolRegistryAsync(): Promise<ToolRegistry> {
   loader.register(execPlugin)
   loader.register(filesPlugin)
   loader.register(planPlugin)
+  loader.register(milestonePlugin)
+  loader.register(gitPlugin)
 
   await loader.loadAll()
 
