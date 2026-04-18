@@ -20,6 +20,17 @@ import { captureEnvSnapshot, diffEnvSnapshots, type EnvSnapshot, type EnvDiff } 
 import { MemoryExtractor } from '../memories/extractor.js'
 import { HookDispatcher } from '../hooks/dispatcher.js'
 
+/** 服务器运行状态 */
+export interface ServerStatus {
+  uptime: number
+  startedAt: number
+  totalThreads: number
+  totalTurns: number
+  activeTurns: number
+  totalTokens: number
+  totalIterations: number
+}
+
 /** runTurn 的配置选项 */
 export interface RunTurnOptions {
   /** LLM 客户端（不传则自动创建） */
@@ -58,6 +69,11 @@ export class ThreadManager {
   private envSnapshots = new Map<string, EnvSnapshot>()
   /** v14.4: Hook 分发器 */
   private hookDispatcher?: HookDispatcher
+  /** v16: 运行状态追踪 */
+  private startedAt = Date.now()
+  private _totalTurns = 0
+  private _totalTokens = 0
+  private _totalIterations = 0
 
   constructor(dataDir?: string) {
     this.store = new ThreadStore(dataDir)
@@ -449,12 +465,30 @@ export class ThreadManager {
       }
     }
 
+    // 更新运行状态
+    this._totalTurns++
+    this._totalTokens += agentResult.totalTokens
+    this._totalIterations += agentResult.iterations
+
     return {
       content: agentResult.content,
       turn,
       iterations: agentResult.iterations,
       totalTokens: agentResult.totalTokens,
       cancelled: agentResult.cancelled,
+    }
+  }
+
+  /** 获取服务器运行状态 */
+  getStatus(): ServerStatus {
+    return {
+      uptime: Date.now() - this.startedAt,
+      startedAt: this.startedAt,
+      totalThreads: this._totalTurns > 0 ? 1 : 0,
+      totalTurns: this._totalTurns,
+      activeTurns: 0,
+      totalTokens: this._totalTokens,
+      totalIterations: this._totalIterations,
     }
   }
 

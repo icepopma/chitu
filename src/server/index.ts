@@ -12,6 +12,7 @@
  */
 
 import { WebSocketServer, type WebSocket } from 'ws'
+import { createServer } from 'http'
 import { ThreadManager } from '../thread/manager.js'
 import { MessageProcessor } from './message-processor.js'
 import { HookDispatcher } from '../hooks/dispatcher.js'
@@ -28,7 +29,18 @@ export function createAppServer(options?: AppServerOptions) {
   manager.setHookDispatcher(new HookDispatcher())
   const processor = new MessageProcessor(manager)
 
-  const wss = new WebSocketServer({ port })
+  // HTTP server for /status endpoint + WebSocket upgrade
+  const httpServer = createServer((req, res) => {
+    if (req.url?.startsWith('/status')) {
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify(manager.getStatus(), null, 2))
+    } else {
+      res.writeHead(426, { 'Content-Type': 'text/plain' })
+      res.end('Upgrade Required. Use WebSocket or /status endpoint.')
+    }
+  })
+
+  const wss = new WebSocketServer({ server: httpServer })
 
   wss.on('connection', (ws: WebSocket) => {
     console.log('[ws] 客户端连接')
@@ -57,11 +69,14 @@ export function createAppServer(options?: AppServerOptions) {
     })
   })
 
+  httpServer.listen(port)
+
   console.log(`\n🚀 Chitu App Server`)
   console.log(`   WebSocket: ws://localhost:${port}`)
+  console.log(`   Status:    http://localhost:${port}/status`)
   console.log(`   数据目录: ${options?.dataDir || './chitu-data/threads'}\n`)
 
-  return { wss, manager, processor }
+  return { wss, httpServer, manager, processor }
 }
 
 // 直接运行：npx tsx src/server/index.ts
