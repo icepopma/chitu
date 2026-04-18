@@ -214,13 +214,13 @@ export function useChituSocket(options?: { url?: string }) {
     }
   }, [selectThread, setItems])
 
-  const sendMessage = useCallback(async (message: string) => {
+  const sendMessage = useCallback(async (message: string, autoApprove?: boolean) => {
     const threadId = currentThreadIdRef.current
     if (!threadId) throw new Error('没有选中的线程')
 
     clearItems()
     setTurnStatus('in_progress')
-    await sendRequest('turn/start', { threadId, message })
+    await sendRequest('turn/start', { threadId, message, autoApprove })
   }, [clearItems, setTurnStatus])
 
   const deleteThread = useCallback(async (threadId: string) => {

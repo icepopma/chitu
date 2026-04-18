@@ -201,6 +201,7 @@ export class MessageProcessor {
   private async handleTurnStart(ws: WebSocket, id: number | string, params?: Record<string, unknown>): Promise<void> {
     const threadId = params?.threadId as string
     const message = params?.message as string
+    const autoApprove = params?.autoApprove as boolean
 
     if (!threadId || !message) {
       this.send(ws, createError(id, INVALID_PARAMS, 'Missing threadId or message'))
@@ -214,10 +215,15 @@ export class MessageProcessor {
     // 立即返回响应（不等待 Turn 完成！）
     this.send(ws, createResponse(id, { threadId, status: 'started' }))
 
+    // autoApprove 模式：所有审批自动通过（用于自主运行长任务）
+    const approvalCallback = autoApprove
+      ? async () => true
+      : this.createApprovalCallback(threadId)
+
     // 后台运行 Agent Loop
     this.manager.runTurn(threadId, message, {
       signal: controller.signal,
-      onApprovalNeeded: this.createApprovalCallback(threadId),
+      onApprovalNeeded: approvalCallback,
     }).catch((err) => {
       // runTurn 内部已处理错误（emit turn/completed with failed）
       // 这里只清理 AbortController
