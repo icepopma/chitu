@@ -12,6 +12,7 @@
 import type { ChituConfig } from './types.js'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { getShellPath } from '../utils/shell.js'
 
 export const DEFAULT_CONFIG: ChituConfig = {
 	server: {
@@ -31,7 +32,7 @@ export const DEFAULT_CONFIG: ChituConfig = {
 		maxToolOutputLength: 30_000,
 	},
 	tools: {
-		shell: '/bin/bash',
+		shell: getShellPath(),
 		execTimeout: 120_000,
 	},
 }

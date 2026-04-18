@@ -16,6 +16,7 @@
 import { exec as childExec } from 'child_process'
 import type { Tool, ToolResult } from './base.js'
 import { classifyCommand } from './policy.js'
+import { detectShell } from '../utils/shell.js'
 
 /** exec 工具的环境变量，抑制颜色、分页、交互式提示 */
 const EXEC_ENV = {
@@ -60,7 +61,7 @@ export const execTool: Tool = {
         {
           timeout: 30_000,
           maxBuffer: 1024 * 1024,
-          shell: '/bin/bash',
+          shell: detectShell().path,
           env: { ...process.env, ...EXEC_ENV },
         },
         (error, stdout, stderr) => {

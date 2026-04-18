@@ -35,7 +35,7 @@ export function captureEnvSnapshot(cwd?: string): EnvSnapshot {
   const now = new Date()
   return {
     cwd: cwd || process.cwd(),
-    shell: process.env.SHELL || '/bin/bash',
+    shell: process.env.SHELL || '/bin/sh',
     currentDate: now.toISOString().split('T')[0],
     platform: process.platform,
   }

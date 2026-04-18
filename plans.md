@@ -8,7 +8,7 @@
 - [x] M5: 监控 + 告警（Prometheus + 结构化日志）
 - [x] M6: Git 深度集成
 - [x] M7: 文件监听（File Watcher）
-- [ ] M8: 多 Shell 支持
+- [x] M8: 多 Shell 支持
 - [ ] M9: MCP 集成（工具生态）
 - [ ] M10: WebSocket 认证（API Key + JWT）
 - [ ] M11: CLI 模式（终端界面）
@@ -165,7 +165,15 @@
   - macOS / Linux 下行为正确
   - `npx tsc --noEmit` 通过
 - **Verification Commands**: `npx tsc --noEmit`
-- **Status**: pending
+- **Status**: completed
+- **Started**: 1776534693639
+- **Completed**: 1776534783190
+
+### Decisions
+- Shell 检测优先级：SHELL 环境变量 → 平台默认（macOS=/bin/zsh, Linux=/bin/bash）→ 兜底 /bin/sh。不使用 chsh 或 /etc/shells 解析，因为 SHELL 环境变量在 macOS/Linux 上由 login 程序设置，是检测当前用户 Shell 最可靠的方式。
+
+### Notes
+- 新增 src/utils/shell.ts（detectShell/getShellPath/getShellArgs/ShellType/ShellInfo）。修改 src/tools/exec.ts（import detectShell，shell 参数改为 detectShell().path）。修改 src/config/defaults.ts（import getShellPath，默认 shell 改为 getShellPath()）。修改 src/utils/env-diff.ts（fallback 从 /bin/bash 改为 /bin/sh）。
 
 ## M9: MCP 集成（工具生态）
 - **Scope**: 实现 MCP Client（`src/mcp/client.ts`），支持 stdio 和 SSE 传输。动态加载 MCP Server 的工具定义，注册到 ToolRegistry。支持 MCP 工具的审批流程。参考 Codex `codex-rs/mcp/`。

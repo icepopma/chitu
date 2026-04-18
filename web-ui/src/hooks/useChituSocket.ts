@@ -211,9 +211,10 @@ export function useChituSocket(options?: { url?: string }) {
     if (result?.thread) {
       selectThread(threadId)
       if (result.thread.items) setItems(result.thread.items)
+      if (result.thread.currentPlan) setCurrentPlan(result.thread.currentPlan)
       return result.thread
     }
-  }, [selectThread, setItems])
+  }, [selectThread, setItems, setCurrentPlan])
 
   const sendMessage = useCallback(async (message: string, autoApprove?: boolean) => {
     const threadId = currentThreadIdRef.current
