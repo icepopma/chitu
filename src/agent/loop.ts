@@ -28,6 +28,8 @@ import { formatSkillInjection, type Skill } from '../skills/index.js'
 import { MemoryStorage } from '../memories/storage.js'
 import type { HookDispatcher } from '../hooks/dispatcher.js'
 import { loadMilestoneContextText } from '../tools/milestone-plan/context.js'
+import { logger } from '../monitoring/logger.js'
+import { chituMetrics } from '../monitoring/metrics.js'
 
 // ===== 系统提示（对齐 Codex codex-rs/core/gpt_5_1_prompt.md） =====
 
@@ -593,14 +595,14 @@ export async function runAgentLoop(
         llmSucceeded = true
         break
       } catch (llmErr: any) {
-        console.error(`[agent] LLM call failed (attempt ${retry + 1}/${llmMaxRetries}): ${llmErr.message}`)
+        logger.error('LLM call failed', { attempt: retry + 1, maxRetries: llmMaxRetries, error: llmErr.message })
         if (retry < llmMaxRetries - 1) {
           const waitMs = Math.pow(2, retry) * 2000
-          console.warn(`[agent] waiting ${waitMs}ms before retry...`)
+          logger.warn('LLM retry waiting', { waitMs, nextAttempt: retry + 2 })
           await new Promise(r => setTimeout(r, waitMs))
         } else {
           // 所有重试都失败 — 往 messages 里加错误提示，让下一轮迭代知道
-          console.error(`[agent] LLM call failed after ${llmMaxRetries} retries, adding error to context`)
+          logger.error('LLM call failed after all retries, adding error to context', { maxRetries: llmMaxRetries })
           messages.push({
             role: 'user',
             content: `[系统错误] LLM API 连续 ${llmMaxRetries} 次调用失败: ${llmErr.message}。如果是 API key 问题请停止并告知用户。如果是网络问题，请继续尝试。`,
@@ -706,6 +708,7 @@ export async function runAgentLoop(
         resultContent = `错误：未知工具 "${toolName}"`
         isError = true
         exitCode = 1
+        chituMetrics.recordToolCall(toolName, 'error')
       } else {
         // v14.4: pre_tool_use hook — 工具执行前的拦截点
         if (config.hookDispatcher) {
@@ -746,10 +749,12 @@ export async function runAgentLoop(
           resultContent = result.content
           isError = result.isError || false
           exitCode = result.exitCode
+          chituMetrics.recordToolCall(toolName, 'success')
         } catch (err: any) {
           resultContent = `工具执行出错: ${err.message}`
           isError = true
           exitCode = 1
+          chituMetrics.recordToolCall(toolName, 'error')
         }
 
         // v14.4: post_tool_use hook — 工具执行后可修改输出

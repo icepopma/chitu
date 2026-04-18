@@ -40,7 +40,7 @@ interface DashboardData {
     taskDurationMs?: number
     hasActive: boolean
   }
-  recentEvents: Array<{ type: string; timestamp: string; data: any }>
+  recentEvents: Array<{ type: string; timestamp: number | string; data: any }>
   timestamp: number
 }
 
@@ -270,17 +270,48 @@ function ActivityFeed({ data }: { data: DashboardData }) {
   return (
     <Card title="活动记录" icon={<Activity className="w-3.5 h-3.5 text-[#43b581]" />}>
       <div className="space-y-1 max-h-[400px] overflow-y-auto">
-        {events.slice(-20).reverse().map((evt, i) => (
-          <div key={i} className="flex items-center gap-2 py-1 px-2 rounded hover:bg-[#1e1e1e] text-xs">
-            <span className="text-[#5865f2]">
-              {evt.type.includes('thread') ? '◉' :
-               evt.type.includes('turn') ? '▶' :
-               evt.type.includes('delta') ? '·' :
-               evt.type.includes('plan') ? '◆' : '◇'}
-            </span>
-            <span className="text-[#888] font-mono">{evt.type}</span>
-          </div>
-        ))}
+        {events.slice(-30).reverse().map((evt, i) => {
+          const ts = evt.timestamp ? new Date(typeof evt.timestamp === 'number' ? evt.timestamp : evt.timestamp) : null
+          const timeStr = ts && !isNaN(ts.getTime()) ? ts.toLocaleTimeString() : ''
+          // Extract summary from data
+          const summary = (() => {
+            const d = evt.data
+            if (!d) return ''
+            if (evt.type === 'item/completed' || evt.type === 'item/started') {
+              const item = d.item
+              if (!item) return ''
+              if (item.type === 'tool_call') {
+                try {
+                  const c = typeof item.content === 'string' ? JSON.parse(item.content) : item.content
+                  if (Array.isArray(c) && c[0]?.function) return c[0].function.name
+                } catch {}
+                return 'tool_call'
+              }
+              if (item.type === 'assistant_message') return item.content ? String(item.content).slice(0, 60) + (String(item.content).length > 60 ? '...' : '') : ''
+              if (item.type === 'tool_result') return 'result'
+              if (item.type === 'user_message') return 'user'
+              return item.type
+            }
+            if (evt.type === 'turn/started') return '▶ turn started'
+            if (evt.type === 'turn/completed') return `✓ ${d.turn?.status || 'completed'}`
+            if (evt.type === 'plan/updated') return `plan: ${d.plan?.filter((s: any) => s.status === 'in_progress').length || 0} active`
+            return ''
+          })()
+
+          return (
+            <div key={i} className="flex items-center gap-2 py-1 px-2 rounded hover:bg-[#1e1e1e] text-xs">
+              <span className="text-[#5865f2]">
+                {evt.type.includes('thread') ? '◉' :
+                 evt.type.includes('turn') ? '▶' :
+                 evt.type.includes('delta') ? '·' :
+                 evt.type.includes('plan') ? '◆' : '◇'}
+              </span>
+              <span className="text-[#888] font-mono w-24 shrink-0">{evt.type}</span>
+              {summary && <span className="text-[#666] truncate flex-1">{summary}</span>}
+              {timeStr && <span className="text-[#555] font-mono shrink-0">{timeStr}</span>}
+            </div>
+          )
+        })}
         {events.length === 0 && (
           <div className="text-sm text-[#888] text-center py-8">暂无活动记录</div>
         )}
@@ -310,7 +341,7 @@ export function DashboardPage({ onBack }: { onBack: () => void }) {
 
   useEffect(() => {
     fetchData()
-    const interval = setInterval(fetchData, 5000)
+    const interval = setInterval(fetchData, 2000)
     return () => clearInterval(interval)
   }, [fetchData])
 

@@ -12,12 +12,15 @@
 - M1: ✅ 已完成（LLM API 可靠性）
 - M2: ✅ 已完成（分层配置系统）
 - M3: ✅ 已完成（Neon PostgreSQL 数据库存储）
+- M4: ✅ 已完成（Crash Recovery）
+- M5: ✅ 已完成（监控 + 告警）
+- M6-M22: 待处理
 
 ### 优先级分组
 | 优先级 | 范围 | Milestones |
 |--------|------|-----------|
-| P0 基础设施 | 让赤兔稳定运行 | M1 ✅, M2（配置）, M3（数据库） |
-| P1 可观测+安全 | 让赤兔可信赖 | M4（Crash Recovery）, M5（监控）, M6（Git） |
+| P0 基础设施 | 让赤兔稳定运行 | M1 ✅, M2 ✅, M3 ✅ |
+| P1 可观测+安全 | 让赤兔可信赖 | M4 ✅, M5 ✅, M6（Git） |
 | P2 平台支持 | 让赤兔跑在更多环境 | M7（文件监听）, M8（多 Shell） |
 | P3 生态集成 | 扩展能力边界 | M9（MCP）, M10（认证） |
 | P4 多端接入 | CLI/沙盒/容器 | M11（CLI）, M12（沙盒）, M13（Docker CI） |
@@ -26,21 +29,35 @@
 | P7 收尾 | 文档 | M22 |
 
 ### 已完成的核心能力
+
+**基础架构：**
 - Agent Loop（while 循环：LLM → tool_calls → 执行 → 重复，10000 次迭代上限）
 - Thread/Turn/Item 协议（对齐 Codex）
 - WebSocket JSON-RPC 2.0 传输层
 - 插件式工具系统（PluginLoader + 依赖排序）
 - Context Compaction（80K token 后自动压缩）
-- 5 个 Hook 事件点（pre/post tool、session start/end、prompt submit）
-- 跨 session 记忆提取和注入
-- Skills 加载系统
-- 里程碑计划工具（milestone_plan + git_checkpoint/git_rollback + 任务时长追踪）
-- 监控面板（/dashboard endpoint + Discord 风格前端）
-- 流式输出（item/delta 事件）
-- LLM API 可靠性（3 次 HTTP 重试 + 5 次 Agent Loop 重试 + 错误注入）
-- 自主运行模式（autoApprove + 前端 Zap 图标）
+- 流式输出（item/delta 事件，逐 token 推送）
 - System Prompt 对齐 Codex gpt_5_1_prompt.md（11 节结构）
-- **Neon PostgreSQL 数据库存储**（M3）— ThreadStore + MemoryStorage 双写策略（PG 主 + JSON 备份），启动时自动迁移
+
+**安全与可靠性：**
+- 5 个 Hook 事件点（pre/post tool、session start/end、prompt submit）
+- 安全审批系统（命令三级分类：read/write/dangerous）
+- 自主运行模式（autoApprove + 前端 Zap 图标切换）
+- LLM API 可靠性（M1）— 3 次 HTTP 指数退避重试 + 5 次 Agent Loop 重试 + 错误注入到上下文
+- Crash Recovery（M4）— active_turns 表持久化 turn 状态，启动时扫描未完成 turn 标记为 interrupted，envSnapshots 持久化到数据库
+
+**知识与记忆：**
+- 跨 session 记忆提取和注入（5 种类别：preference/architecture/convention/failure/fact）
+- Skills 加载系统（自动发现 .agents/skills/*/SKILL.md）
+
+**规划与监控：**
+- 里程碑计划工具（milestone_plan + git_checkpoint/git_rollback + 任务时长追踪）
+- 监控面板（/dashboard endpoint + Discord 风格前端，含服务器信息、运行指标、里程碑进度、活动记录）
+- **Prometheus 指标 + 结构化日志**（M5）— 8 个 Prometheus 指标（turn 耗时 histogram、turn 总数 counter、token 消耗 counter、LLM 请求计数/耗时、活跃连接 gauge、工具调用 counter），`/metrics` endpoint 输出标准 Prometheus exposition format。`/health` endpoint 返回 200。StructuredLogger 输出 JSON 格式日志（timestamp + level + message + requestId + context），已集成到 server、agent loop、hooks、message-processor。LLM metrics 通过 LlmMetrics 接口 + setMetrics() 注入避免循环依赖
+
+**配置与存储：**
+- **分层配置系统**（M2）— 4 层叠加：全局 `~/.chitu/config.json` → 项目 `.chitu/config.json` → 环境变量 → CLI 参数。后者覆盖前者。支持类型验证。7 个文件：types.ts（类型定义）、defaults.ts（默认值）、loader.ts（文件加载）、merge.ts（4 层合并）、env.ts（环境变量映射）、validate.ts（验证）、index.ts（入口 + 单例缓存）
+- **Neon PostgreSQL 数据库存储**（M3）— ThreadStore + MemoryStorage 双写策略（PG 主存储 + JSON 文件备份），启动时自动运行 5 个迁移（threads、rollout_events、memories 表 + 索引 + active_turns 表），数据库不可用时自动降级到文件存储
 
 ## 本地启动
 
@@ -54,6 +71,8 @@ npx tsx src/start-server.ts
 ```
 
 ### 环境变量
+- `ZHIPU_API_KEY` — 智谱 AI API Key（必需）
+- `ZHIPU_CODING_ENDPOINT` — GLM-5 API 端点（可选，有默认值）
 - `NEON_DATABASE_URL` — Neon PostgreSQL 连接串（可选，未配置时自动降级到文件存储）
 
 ### 前端
@@ -64,6 +83,8 @@ cd web-ui && npm run dev
 ### 访问
 - Web UI: http://localhost:3000
 - WebSocket: ws://localhost:8080
+- 健康检查: http://localhost:8080/health
+- Prometheus 指标: http://localhost:8080/metrics
 - 状态接口: http://localhost:8080/status
 - 监控面板 API: http://localhost:8080/dashboard
 
@@ -79,16 +100,18 @@ cd web-ui && npm run dev
 ```
 src/
   agent/        — Agent Loop（核心循环）+ context compaction
+  config/       — 分层配置系统（types/defaults/loader/merge/env/validate）
   context.ts    — AGENTS.md 层级加载 + 环境上下文
+  db/           — 数据库连接 + 迁移 + Crash Recovery（Neon PostgreSQL）
   hooks/        — 5 个事件点的 Shell Hook 分发器
-  llm/          — GLM-5 API 客户端（SSE streaming + 重试）
-  memories/     — 跨 session 知识提取和注入（Neon PostgreSQL 主 + JSON 备份）
+  llm/          — GLM-5 API 客户端（SSE streaming + 重试 + metrics 集成）
+  memories/     — 跨 session 知识提取和注入（PG 主 + JSON 备份）
+  monitoring/   — Prometheus 指标（metrics.ts）+ 结构化 JSON 日志（logger.ts）
   rollout/      — JSONL 事件记录（审计/调试回放）
   server/       — WebSocket 传输 + JSON-RPC + HTTP endpoints
   skills/       — Skills 加载系统
-  thread/       — ThreadManager + ThreadStore（Neon PostgreSQL 主 + JSON 备份）
+  thread/       — ThreadManager + ThreadStore（PG 主 + JSON 备份）
   tools/        — 工具系统：PluginLoader + 多个 Plugin
-  db/           — 数据库连接 + 迁移（Neon PostgreSQL）
   types.ts      — 核心类型（Thread/Turn/Item/AppEvent）
 web-ui/         — React 19 + Vite 8 前端（Discord 风格）
 docs/           — prompt.md + implement.md + documentation.md + 架构文档
@@ -111,6 +134,9 @@ Transport (WebSocket/JSON-RPC)
 ## 已知问题 / 后续
 
 - ~~数据存储还是 JSON 文件，需迁移到 Neon PostgreSQL（M3）~~ ✅ 已完成
+- ~~无分层配置系统（M2）~~ ✅ 已完成
+- ~~无 Crash Recovery，进程崩溃丢失 turn 状态（M4）~~ ✅ 已完成
+- ~~无结构化日志和 Prometheus 指标（M5，进行中）~~ ✅ 已完成
 - WebSocket 无认证（M10）
 - exec 工具无沙盒隔离（M12）
 - 无 CI/CD（M13）
@@ -120,11 +146,26 @@ Transport (WebSocket/JSON-RPC)
 
 ## 设计决策记录
 
-（Agent 运行过程中通过 milestone_plan decision 持续更新此节）
+### M2: 分层配置系统
+- **决策**：4 层叠加（全局 → 项目 → 环境变量 → CLI），参考 Codex codex-rs/config/
+- **为什么**：不同项目可能需要不同的端口、模型、超时设置。分层让全局默认值被项目级配置覆盖，CLI 参数最高优先级方便临时调试。
+- **Trade-off**：增加了首次理解的复杂度，但换来了灵活性。用 `getConfig()` 单例缓存避免重复加载。
+
+### M3: Neon PostgreSQL 数据库存储
+- **决策**：双写策略 — PG 主存储 + JSON 文件备份，数据库不可用时自动降级
+- **为什么**：Neon serverless 自动休眠不扣费，适合开发和小规模使用。JSON 备份确保即使数据库挂了数据也不丢。`ON CONFLICT DO UPDATE` 实现幂等写入。
+- **Trade-off**：双写有轻微性能开销，但保证了数据安全。`neon()` SQL 模板标签函数天然防 SQL 注入。
+
+### M4: Crash Recovery
+- **决策**：active_turns 表 + 启动时扫描 interrupted
+- **为什么**：进程崩溃时内存中的 turn 状态全部丢失。写入数据库后，重启时可以知道哪些 turn 被中断，envSnapshots 也能恢复。
+- **Trade-off**：每次 turn start/complete 多一次数据库写入，但换来的是崩溃后可恢复。
 
 ## 变更日志
 
-- 2026-04-18: M3 完成 — ThreadStore 和 MemoryStorage 迁移到 Neon PostgreSQL，保留 JSON 文件作为备份。启动时自动运行迁移。双写策略确保可靠性。
+- 2026-04-19: M4 完成 — 新增 src/db/crash-recovery.ts，active_turns 表持久化 turn 状态（start/complete/fail/interrupt），启动时 recoverInterruptedTurns() 扫描未完成 turn，envSnapshots 持久化到数据库。迁移 005_create_active_turns。
+- 2026-04-19: M3 完成 — ThreadStore 和 MemoryStorage 迁移到 Neon PostgreSQL，保留 JSON 文件作为备份。5 个数据库迁移（threads/rollout_events/memories 表 + 索引 + active_turns）。双写策略确保可靠性。新增 src/db/connection.ts、src/db/migrate.ts。
+- 2026-04-19: M2 完成 — 新增 src/config/ 目录（7 个文件），实现分层配置系统。全局 ~/.chitu/config.json → 项目 .chitu/config.json → 环境变量 → CLI 参数。支持类型验证和默认值。
 - 2026-04-18: 数据库从 SQLite 改为 Neon serverless PostgreSQL
 - 2026-04-18: 重新排序 milestones（22 个），新增 M7 文件监听、M8 多 Shell 支持。将 PROGRESS.md 未完成任务合并。M1 标记为 completed。
 - 2026-04-18: 创建 documentation.md，记录项目初始状态

@@ -9,6 +9,7 @@
  */
 
 import { randomUUID } from 'crypto'
+import { readdirSync, existsSync } from 'fs'
 import type { Thread, Turn, Item, AppEvent, EventHandler, PlanStep } from '../types.js'
 import { ThreadStore } from './store.js'
 import { RolloutRecorder } from '../rollout/recorder.js'
@@ -21,6 +22,7 @@ import { MemoryExtractor } from '../memories/extractor.js'
 import { HookDispatcher } from '../hooks/dispatcher.js'
 import { recordTurnStart, recordTurnComplete, updateTurnEnvSnapshot, getLatestEnvSnapshot } from '../db/crash-recovery.js'
 import { isDbAvailable } from '../db/connection.js'
+import { chituMetrics } from '../monitoring/metrics.js'
 
 /** 服务器运行状态 */
 export interface ServerStatus {
@@ -271,6 +273,9 @@ export class ThreadManager {
     // M4: 持久化 turn 开始状态到数据库
     recordTurnStart(turn.id, threadId).catch(() => {})
 
+    // M5: Metrics 计时器
+    const stopTurnTimer = chituMetrics.startTurnTimer()
+
     // 2. 自动重命名：标题为默认值时用首条消息更新
     if (thread.title === '新对话' || thread.title === 'Untitled') {
       thread.title = userInput.length > 30 ? userInput.slice(0, 30) + '...' : userInput
@@ -306,6 +311,7 @@ export class ThreadManager {
 
     // 3. 构建 Agent Loop 的对话历史
     const client = options?.client || new LLMClient()
+    client.setMetrics(chituMetrics)
     const tools = createToolRegistry().list()
 
     // 从已有 items 重建对话历史
@@ -463,6 +469,8 @@ export class ThreadManager {
       this.emit({ type: 'turn/completed', turn, thread })
       await this.store.save(thread)
       recordTurnComplete(turn.id, 'failed').catch(() => {})
+      stopTurnTimer()
+      chituMetrics.recordTurn('failed')
       throw err
     }
 
@@ -496,6 +504,11 @@ export class ThreadManager {
     this._totalTokens += agentResult.totalTokens
     this._totalIterations += agentResult.iterations
 
+    // M5: Metrics
+    stopTurnTimer()
+    chituMetrics.recordTurn(turn.status)
+    chituMetrics.recordTokens(agentResult.totalTokens)
+
     return {
       content: agentResult.content,
       turn,
@@ -507,10 +520,17 @@ export class ThreadManager {
 
   /** 获取服务器运行状态 */
   getStatus(): ServerStatus {
+    // 从文件系统获取真实 thread 数量
+    let threadCount = 0
+    const dir = './chitu-data/threads'
+    if (existsSync(dir)) {
+      threadCount = readdirSync(dir).filter((f: string) => f.endsWith('.json')).length
+    }
+
     return {
       uptime: Date.now() - this.startedAt,
       startedAt: this.startedAt,
-      totalThreads: this._totalTurns > 0 ? 1 : 0,
+      totalThreads: threadCount,
       totalTurns: this._totalTurns,
       activeTurns: 0,
       totalTokens: this._totalTokens,

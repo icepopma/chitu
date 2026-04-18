@@ -20,6 +20,8 @@ import { MessageProcessor } from './message-processor.js'
 import { HookDispatcher } from '../hooks/dispatcher.js'
 import { parseMessage, createError, PARSE_ERROR } from './json-rpc.js'
 import { loadMilestonePlan } from '../tools/milestone-plan/parser.js'
+import { chituMetrics } from '../monitoring/metrics.js'
+import { logger } from '../monitoring/logger.js'
 
 export interface AppServerOptions {
   port?: number
@@ -47,6 +49,12 @@ export function createAppServer(options?: AppServerOptions) {
     if (req.url?.startsWith('/status')) {
       res.writeHead(200, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify(manager.getStatus(), null, 2))
+    } else if (req.url?.startsWith('/health')) {
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ status: 'ok', timestamp: new Date().toISOString() }))
+    } else if (req.url?.startsWith('/metrics')) {
+      res.writeHead(200, { 'Content-Type': 'text/plain; version=0.0.4' })
+      res.end(chituMetrics.render())
     } else if (req.url?.startsWith('/dashboard')) {
       res.writeHead(200, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify(buildDashboardData(manager, projectRoot), null, 2))
@@ -59,8 +67,9 @@ export function createAppServer(options?: AppServerOptions) {
   const wss = new WebSocketServer({ server: httpServer })
 
   wss.on('connection', (ws: WebSocket) => {
-    console.log('[ws] 客户端连接')
+    logger.info('WebSocket client connected')
     processor.addClient(ws)
+    chituMetrics.connectionAdded()
 
     ws.on('message', async (data) => {
       const raw = data.toString()
@@ -71,24 +80,28 @@ export function createAppServer(options?: AppServerOptions) {
         return
       }
 
-      console.log('[ws]', request.method, request.id ?? '(notification)')
+      logger.debug('WebSocket message received', { method: request.method, id: request.id })
       await processor.handleMessage(ws, request)
     })
 
     ws.on('close', () => {
-      console.log('[ws] 客户端断开')
+      logger.info('WebSocket client disconnected')
       processor.removeClient(ws)
+      chituMetrics.connectionRemoved()
     })
 
     ws.on('error', (err) => {
-      console.error('[ws] 连接错误:', err.message)
+      logger.error('WebSocket connection error', { error: err.message })
     })
   })
 
   httpServer.listen(port)
 
+  logger.info('Chitu App Server started', { port, dataDir: options?.dataDir || './chitu-data/threads' })
   console.log(`\n🚀 Chitu App Server`)
   console.log(`   WebSocket: ws://localhost:${port}`)
+  console.log(`   Health:    http://localhost:${port}/health`)
+  console.log(`   Metrics:   http://localhost:${port}/metrics`)
   console.log(`   Status:    http://localhost:${port}/status`)
   console.log(`   数据目录: ${options?.dataDir || './chitu-data/threads'}\n`)
 
@@ -159,15 +172,18 @@ function buildDashboardData(manager: ThreadManager, projectRoot: string) {
 }
 
 /** 读取最近 N 条 rollout events */
-function loadRecentRolloutEvents(projectRoot: string, limit: number): Array<{ type: string; timestamp: string; data: any }> {
+function loadRecentRolloutEvents(projectRoot: string, limit: number): Array<{ type: string; timestamp: number; data: any }> {
   const rolloutDir = join(projectRoot, 'chitu-data', 'rollouts')
   try {
     const files = readdirSync(rolloutDir).filter(f => f.endsWith('.jsonl')).sort().reverse()
-    const events: Array<{ type: string; timestamp: string; data: any }> = []
-    for (const file of files.slice(0, 5)) {
+    const events: Array<{ type: string; timestamp: number; data: any }> = []
+    // 只读最新的那个 rollout 文件（当前活跃线程）
+    for (const file of files.slice(0, 1)) {
       const content = readFileSync(join(rolloutDir, file), 'utf-8')
       const lines = content.trim().split('\n').filter(Boolean)
-      for (const line of lines) {
+      // 只取最后 limit 条，跳过 item/delta（太多太碎）
+      const recentLines = lines.slice(-limit * 3)
+      for (const line of recentLines) {
         try {
           events.push(JSON.parse(line))
         } catch { /* skip malformed */ }

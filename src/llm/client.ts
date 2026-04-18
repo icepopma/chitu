@@ -9,6 +9,7 @@
  * - messages 数组就是"对话历史"
  * - function calling 让模型可以说"我想调用某个工具"
  * - v14.2：新增 chatStream() 支持流式输出（SSE）
+ * - v17：集成 Prometheus metrics（LLM 请求计时 + 错误率）
  */
 
 // ===== 类型定义 =====
@@ -66,12 +67,19 @@ export interface StreamChunk {
   usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number }
 }
 
+/** Metrics 接口（避免循环依赖） */
+export interface LlmMetrics {
+  startLlmTimer(): () => void
+  recordLlmRequest(status: string): void
+}
+
 // ===== 客户端实现 =====
 
 export class LLMClient {
   private apiKey: string
   private model: string
   private endpoint: string
+  private metrics: LlmMetrics | null = null
 
   constructor() {
     this.apiKey = process.env.ZHIPU_API_KEY || process.env.GLM_API_KEY || ''
@@ -82,6 +90,11 @@ export class LLMClient {
     if (!this.apiKey) {
       throw new Error('需要设置 ZHIPU_API_KEY 或 GLM_API_KEY 环境变量')
     }
+  }
+
+  /** 注入 metrics 实例（避免循环依赖） */
+  setMetrics(metrics: LlmMetrics): void {
+    this.metrics = metrics
   }
 
   /**
@@ -132,35 +145,46 @@ export class LLMClient {
       body.tool_choice = 'auto'
     }
 
-    const response = await fetch(this.endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.apiKey}`,
-      },
-      body: JSON.stringify(body),
-    })
+    const stopTimer = this.metrics?.startLlmTimer()
+    try {
+      const response = await this.fetchWithRetry(this.endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify(body),
+      })
 
-    if (!response.ok) {
-      const text = await response.text()
-      throw new Error(`GLM API error ${response.status}: ${text}`)
-    }
+      if (!response.ok) {
+        this.metrics?.recordLlmRequest('error')
+        const text = await response.text()
+        throw new Error(`GLM API error ${response.status}: ${text}`)
+      }
 
-    const data = await response.json()
-    const choice = data.choices?.[0]
+      this.metrics?.recordLlmRequest('success')
 
-    if (!choice) {
-      throw new Error('GLM API 返回了空响应')
-    }
+      const data = await response.json()
+      const choice = data.choices?.[0]
 
-    return {
-      content: choice.message.content || null,
-      tool_calls: choice.message.tool_calls || null,
-      usage: {
-        prompt_tokens: data.usage?.prompt_tokens || 0,
-        completion_tokens: data.usage?.completion_tokens || 0,
-        total_tokens: data.usage?.total_tokens || 0,
-      },
+      if (!choice) {
+        throw new Error('GLM API 返回了空响应')
+      }
+
+      return {
+        content: choice.message.content || null,
+        tool_calls: choice.message.tool_calls || null,
+        usage: {
+          prompt_tokens: data.usage?.prompt_tokens || 0,
+          completion_tokens: data.usage?.completion_tokens || 0,
+          total_tokens: data.usage?.total_tokens || 0,
+        },
+      }
+    } catch (err) {
+      this.metrics?.recordLlmRequest('error')
+      throw err
+    } finally {
+      stopTimer?.()
     }
   }
 
@@ -193,103 +217,119 @@ export class LLMClient {
       body.tool_choice = 'auto'
     }
 
-    const response = await this.fetchWithRetry(this.endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.apiKey}`,
-      },
-      body: JSON.stringify(body),
-    })
-
-    if (!response.ok) {
-      const text = await response.text()
-      throw new Error(`GLM API stream error ${response.status}: ${text}`)
-    }
-
-    // 累积结果
-    let content = ''
-    const toolCallsMap = new Map<number, ToolCall>()
-    let usage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
-
-    // 解析 SSE 流
-    const reader = response.body!.getReader()
-    const decoder = new TextDecoder()
-    let buffer = ''
+    const stopTimer = this.metrics?.startLlmTimer()
+    let succeeded = false
 
     try {
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
+      const response = await this.fetchWithRetry(this.endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify(body),
+      })
 
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() ?? ''
+      if (!response.ok) {
+        this.metrics?.recordLlmRequest('error')
+        const text = await response.text()
+        throw new Error(`GLM API stream error ${response.status}: ${text}`)
+      }
 
-        for (const line of lines) {
-          const trimmed = line.trim()
-          if (!trimmed || !trimmed.startsWith('data: ')) continue
+      // 累积结果
+      let content = ''
+      const toolCallsMap = new Map<number, ToolCall>()
+      let usage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
 
-          const data = trimmed.slice(6)
-          if (data === '[DONE]') {
-            onChunk({ delta: '', done: true, tool_calls: null, usage })
-            break
-          }
+      // 解析 SSE 流
+      const reader = response.body!.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
 
-          try {
-            const parsed = JSON.parse(data)
-            const choice = parsed.choices?.[0]
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
 
-            if (choice) {
-              const textDelta = choice.delta?.content
-              if (textDelta) {
-                content += textDelta
-                onChunk({ delta: textDelta, done: false, tool_calls: null })
-              }
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() ?? ''
 
-              if (choice.delta?.tool_calls) {
-                for (const tc of choice.delta.tool_calls) {
-                  const idx = tc.index ?? 0
-                  if (!toolCallsMap.has(idx)) {
-                    toolCallsMap.set(idx, {
-                      id: tc.id || '',
-                      type: 'function',
-                      function: { name: '', arguments: '' },
-                    })
+          for (const line of lines) {
+            const trimmed = line.trim()
+            if (!trimmed || !trimmed.startsWith('data: ')) continue
+
+            const data = trimmed.slice(6)
+            if (data === '[DONE]') {
+              onChunk({ delta: '', done: true, tool_calls: null, usage })
+              break
+            }
+
+            try {
+              const parsed = JSON.parse(data)
+              const choice = parsed.choices?.[0]
+
+              if (choice) {
+                const textDelta = choice.delta?.content
+                if (textDelta) {
+                  content += textDelta
+                  onChunk({ delta: textDelta, done: false, tool_calls: null })
+                }
+
+                if (choice.delta?.tool_calls) {
+                  for (const tc of choice.delta.tool_calls) {
+                    const idx = tc.index ?? 0
+                    if (!toolCallsMap.has(idx)) {
+                      toolCallsMap.set(idx, {
+                        id: tc.id || '',
+                        type: 'function',
+                        function: { name: '', arguments: '' },
+                      })
+                    }
+                    const existing = toolCallsMap.get(idx)!
+                    if (tc.id) existing.id = tc.id
+                    if (tc.function?.name) existing.function.name += tc.function.name
+                    if (tc.function?.arguments) existing.function.arguments += tc.function.arguments
                   }
-                  const existing = toolCallsMap.get(idx)!
-                  if (tc.id) existing.id = tc.id
-                  if (tc.function?.name) existing.function.name += tc.function.name
-                  if (tc.function?.arguments) existing.function.arguments += tc.function.arguments
                 }
               }
-            }
 
-            if (parsed.usage) {
-              usage = {
-                prompt_tokens: parsed.usage.prompt_tokens || 0,
-                completion_tokens: parsed.usage.completion_tokens || 0,
-                total_tokens: parsed.usage.total_tokens || 0,
+              if (parsed.usage) {
+                usage = {
+                  prompt_tokens: parsed.usage.prompt_tokens || 0,
+                  completion_tokens: parsed.usage.completion_tokens || 0,
+                  total_tokens: parsed.usage.total_tokens || 0,
+                }
               }
+            } catch {
+              // 跳过无法解析的行
             }
-          } catch {
-            // 跳过无法解析的行
           }
         }
+      } finally {
+        try { reader.releaseLock() } catch { /* already released */ }
       }
+
+      // 组装最终结果
+      const toolCalls = toolCallsMap.size > 0
+        ? Array.from(toolCallsMap.values())
+        : null
+
+      this.metrics?.recordLlmRequest('success')
+      succeeded = true
+
+      return {
+        content: content || null,
+        tool_calls: toolCalls,
+        usage,
+      }
+    } catch (err) {
+      if (!succeeded) {
+        this.metrics?.recordLlmRequest('error')
+      }
+      throw err
     } finally {
-      reader.releaseLock()
-    }
-
-    // 组装最终结果
-    const toolCalls = toolCallsMap.size > 0
-      ? Array.from(toolCallsMap.values())
-      : null
-
-    return {
-      content: content || null,
-      tool_calls: toolCalls,
-      usage,
+      stopTimer?.()
     }
   }
 }

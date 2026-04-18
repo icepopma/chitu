@@ -5,7 +5,7 @@
 - [x] M2: 分层配置系统
 - [x] M3: 数据库存储（Neon PostgreSQL 替代 JSON 文件）
 - [x] M4: 服务端状态持久化（Crash Recovery）
-- [ ] M5: 监控 + 告警（Prometheus + 结构化日志）
+- [x] M5: 监控 + 告警（Prometheus + 结构化日志）
 - [ ] M6: Git 深度集成
 - [ ] M7: 文件监听（File Watcher）
 - [ ] M8: 多 Shell 支持
@@ -108,7 +108,15 @@
   - 结构化日志输出 JSON 格式
   - `npx tsc --noEmit` 通过
 - **Verification Commands**: `npx tsc --noEmit`, `curl http://localhost:8080/health`
-- **Status**: pending
+- **Status**: completed
+- **Started**: 1776531895427
+- **Completed**: 1776533380685
+
+### Decisions
+- LLM metrics 通过 setter 注入（client.setMetrics()）避免循环依赖。LLMClient 定义 LlmMetrics 接口，由 chituMetrics 实现该接口。
+
+### Notes
+- 变更文件：src/llm/client.ts（新增 LlmMetrics 接口 + setMetrics() + chat/chatStream 集成计时和错误率）、src/agent/loop.ts（import logger + metrics，工具调用记录 recordToolCall）、src/server/index.ts（import logger，WebSocket 事件用结构化日志）、src/server/message-processor.ts（import logger，turn 失败日志）、src/hooks/dispatcher.ts（所有 console → logger）、src/thread/manager.ts（LLMClient.setMetrics 注入）。已有文件 src/monitoring/metrics.ts 和 src/monitoring/logger.ts 无需修改。
 
 ## M6: Git 深度集成
 - **Scope**: 结构化 git 工具（status、diff、blame、log）作为新 plugin。Ghost Commit：工具执行前自动 git stash，失败时自动回滚。提交归属：自动添加 `Co-authored-by: Chitu Agent`。参考 Codex `codex-rs/git-utils/` 和 `codex-rs/core/src/commit_attribution.rs`。

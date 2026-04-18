@@ -21,6 +21,7 @@ import type {
   UserPromptSubmitInput, UserPromptSubmitOutput,
   HookResult,
 } from './types.js'
+import { logger } from '../monitoring/logger.js'
 
 /** 默认配置文件路径 */
 const DEFAULT_CONFIG_PATH = join(process.cwd(), 'chitu-data', 'hooks.json')
@@ -115,7 +116,7 @@ export class HookDispatcher {
         if (!parsed) continue
 
         if (parsed.action === 'block') {
-          console.log(`[hooks] "${hook.name}" blocked: ${parsed.reason || 'no reason'}`)
+          logger.info('Hook blocked', { hookName: hook.name, reason: parsed.reason || 'no reason' })
           return { blocked: true, blockReason: parsed.reason }
         }
 
@@ -123,8 +124,7 @@ export class HookDispatcher {
           modifiedArgs = parsed.args
         }
       } catch (err) {
-        // fail-open: hook 失败不阻断
-        console.warn(`[hooks] "${hook.name}" error (fail-open):`, (err as Error).message)
+        logger.warn('Hook error (fail-open)', { hookName: hook.name, error: (err as Error).message })
       }
     }
 
@@ -154,7 +154,7 @@ export class HookDispatcher {
           currentResult = parsed.result
         }
       } catch (err) {
-        console.warn(`[hooks] "${hook.name}" error (fail-open):`, (err as Error).message)
+        logger.warn('Hook error (fail-open)', { hookName: hook.name, error: (err as Error).message })
       }
     }
 
@@ -184,7 +184,7 @@ export class HookDispatcher {
           currentPrompt = parsed.prompt
         }
       } catch (err) {
-        console.warn(`[hooks] "${hook.name}" error (fail-open):`, (err as Error).message)
+        logger.warn('Hook error (fail-open)', { hookName: hook.name, error: (err as Error).message })
       }
     }
 
@@ -203,7 +203,7 @@ export class HookDispatcher {
       try {
         await this.executeHook(hook, input)
       } catch (err) {
-        console.warn(`[hooks] "${hook.name}" error (fail-open):`, (err as Error).message)
+        logger.warn('Hook error (fail-open)', { hookName: hook.name, error: (err as Error).message })
       }
     }
   }

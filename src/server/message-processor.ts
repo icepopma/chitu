@@ -17,6 +17,7 @@ import type { WebSocket } from 'ws'
 import type { AppEvent, Thread, Item, Turn } from '../types.js'
 import { ThreadManager } from '../thread/manager.js'
 import { classifyCommand } from '../tools/policy.js'
+import { logger } from '../monitoring/logger.js'
 import {
   type JsonRpcRequest,
   createResponse,
@@ -228,6 +229,7 @@ export class MessageProcessor {
       // runTurn 内部已处理错误（emit turn/completed with failed）
       // 这里只清理 AbortController
       console.error(`Turn failed for thread ${threadId}:`, err.message)
+      logger.error('Turn execution failed', { threadId, error: err.message })
     }).finally(() => {
       this.activeTurns.delete(threadId)
     })
