@@ -508,7 +508,7 @@ export async function runAgentLoop(
     client,
     tools,
     systemPrompt,
-    maxIterations = 500,
+    maxIterations = 2000,
     signal,
     onStep,
     onStreamDelta,
