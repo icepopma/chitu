@@ -11,7 +11,7 @@
 - [x] M8: 多 Shell 支持
 - [x] M9: MCP 集成（工具生态）
 - [x] M10: WebSocket 认证（API Key + JWT）
-- [ ] M11: CLI 模式（终端界面）
+- [x] M11: CLI 模式（终端界面）
 - [ ] M12: 沙盒执行（容器隔离）
 - [ ] M13: Docker + CI/CD
 - [ ] M14: Review 模式
@@ -223,7 +223,12 @@
   - 通过 stdio JSON-RPC 与 App Server 通信
   - `npx tsc --noEmit` 通过
 - **Verification Commands**: `npx tsc --noEmit`
-- **Status**: pending
+- **Status**: completed
+- **Started**: 1776535090406
+- **Completed**: 1776537388813
+
+### Decisions
+- CLI 不使用 ink（避免引入大量 React 依赖），改用 Node.js 内置 readline 模块构建终端界面。CLI 模式在同一进程内启动 App Server，直接调用 MessageProcessor 处理消息（不经过 WebSocket），减少复杂度。这样零外部依赖，且用户体验一致。
 
 ## M12: 沙盒执行（容器隔离）
 - **Scope**: macOS 使用 `sandbox-exec`（Seatbelt 策略），Linux 使用 Docker。策略：只读项目根目录（除指定可写路径）+ 禁止网络访问 + 资源限制。参考 Codex `codex-rs/sandboxing/`。

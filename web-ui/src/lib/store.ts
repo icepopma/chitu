@@ -78,7 +78,7 @@ export const useAppStore = create<AppState>()((set) => ({
     newItems[idx] = { ...newItems[idx], content: newItems[idx].content + delta }
     return { items: newItems }
   }),
-  clearItems: () => set({ items: [] }),
+  clearItems: () => set({ items: [], currentPlan: null }),
   setTurnStatus: (status) => set({ turnStatus: status }),
   setPendingApproval: (req) => set({ pendingApproval: req }),
   setCurrentPlan: (plan) => set({ currentPlan: plan }),

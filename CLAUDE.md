@@ -15,6 +15,9 @@ npm run dev                              # tsx watch src/main.ts
 # Backend (no reload)
 npx tsx src/start-server.ts              # Start WebSocket server (port 8080)
 
+# CLI mode (terminal interface, no browser needed)
+npm run cli                              # tsx src/cli/index.ts
+
 # Frontend
 cd web-ui && npm run dev                 # Start Vite dev server (port 3000)
 cd web-ui && npm run lint                # ESLint
@@ -37,11 +40,13 @@ npx playwright test e2e/plan.spec.ts     # Single e2e test
 The system follows a 4-layer architecture aligned with Codex:
 
 ```
-Transport (WebSocket/JSON-RPC)
+Transport (WebSocket/JSON-RPC or CLI readline)
   → Message Processor (JSON-RPC ↔ ThreadManager translation)
     → Thread Manager (create/resume/runTurn/fork)
       → Agent Loop (while loop: LLM → tool_calls → execute → repeat)
 ```
+
+Both the WebSocket server (`src/server/`) and CLI (`src/cli/`) share the same `ThreadManager` — the only difference is transport.
 
 ### Key Data Model (`src/types.ts`)
 
@@ -58,15 +63,20 @@ Transport (WebSocket/JSON-RPC)
 | Context Builder | `src/context.ts` | Hierarchical AGENTS.md loading (root→CWD, respecting override precedence), environment context, skills injection. |
 | LLM Client | `src/llm/client.ts` | GLM-5 API client with streaming SSE support. Only module that talks to the LLM. |
 | Tool System | `src/tools/` | Plugin-based via `PluginLoader`. `Plugin` groups one or more `Tool` instances with lifecycle hooks (`onLoad`/`onUnload`/`onError`). Dependencies resolved by topological sort. |
+| Tool Plugins | `src/tools/plugins/` | 5 plugin groups: `exec` (shell), `files` (read/write/edit), `plan` (task planning), `git` (checkpoint/restore), `milestone` (progress tracking). |
 | Thread Manager | `src/thread/manager.ts` | Orchestrates threads, runs Agent Loop via `runTurn()`, emits events, handles streaming items. |
+| Thread Store | `src/thread/store.ts` | Dual persistence: Neon PostgreSQL (primary, via `NEON_DATABASE_URL`) + JSON file fallback in `chitu-data/threads/`. |
 | Context Compaction | `src/agent/compact.ts` | Summarizes message history when it exceeds 80K tokens, preserving recent context and re-injecting system prompt. |
 | Hooks | `src/hooks/` | 5 event points: `pre_tool_use` (can block/modify), `post_tool_use` (can modify output), `session_start`, `user_prompt_submit` (can modify prompt), `session_end`. Shell commands with JSON stdin/stdout. |
 | Memories | `src/memories/` | Extracts learnings from completed turns and injects into future conversations. Stored in `chitu-data/memories/`. |
 | Skills | `src/skills/` | Skills loading system for injecting specialized capabilities into agent context. |
+| MCP Integration | `src/mcp/` | Model Context Protocol client for connecting to external tool servers. Loads config, manages client lifecycle, registers MCP tools. |
 | Rollout Recorder | `src/rollout/recorder.ts` | JSONL event stream for audit/debug replay, stored in `chitu-data/rollouts/`. |
 | Command Policy | `src/tools/policy.ts` | Classifies commands as read/write/dangerous for approval flow. |
-| WebSocket Server | `src/server/` | JSON-RPC 2.0 over WebSocket. `index.ts` (transport + HTTP endpoints) → `message-processor.ts` (protocol translation) → `json-rpc.ts` (parsing). HTTP endpoints: `/status` (runtime metrics), `/dashboard` (aggregated status + milestones + rollout events). |
-| Monitoring Dashboard | `web-ui/src/components/DashboardPage.tsx` | Discord-style monitoring page with panels for server info, metrics, milestone progress, milestone list, activity feed. Accessible via Activity icon in sidebar. References https://github.com/joeynyc/hermes-hudui for future enhancements (M20). |
+| Crash Recovery | `src/db/crash-recovery.ts` | Detects interrupted turns on startup and recovers state. |
+| WebSocket Server | `src/server/` | JSON-RPC 2.0 over WebSocket. `index.ts` (transport + HTTP endpoints) → `message-processor.ts` (protocol translation) → `json-rpc.ts` (parsing). HTTP endpoints: `/status` (runtime metrics), `/health`, `/dashboard` (aggregated status + milestones + rollout events). |
+| Monitoring Dashboard | `web-ui/src/components/DashboardPage.tsx` | Discord-style monitoring page with panels for server info, metrics, milestone progress, activity feed. |
+| CLI | `src/cli/index.ts` | Terminal interface using readline. Same `ThreadManager`, no JSON-RPC serialization needed. |
 
 ### Frontend (`web-ui/`)
 
@@ -76,11 +86,13 @@ React 19 + Vite 8 + TailwindCSS 4 + Zustand 5. Uses a singleton WebSocket hook (
 
 - **TypeScript + ESM** with `"type": "module"`. Import paths use `.js` suffix.
 - **LLM**: GLM-5 via 智谱AI. Requires `ZHIPU_API_KEY` env var. Endpoint configurable via `ZHIPU_CODING_ENDPOINT`.
+- **Database**: Neon PostgreSQL via `NEON_DATABASE_URL`. Falls back to JSON files if DB unavailable.
 - **Types in `src/types.ts`**: Do not modify `AppEvent` type — it aligns with the Codex protocol.
 - **Tool interface**: All tools follow `Tool` interface in `src/tools/base.ts`. New tools should be implemented as plugins (see `src/tools/plugins/`) implementing the `Plugin` interface from `src/tools/plugin-types.ts`.
 - **Plugin structure**: Each plugin in `src/tools/plugins/` groups related tools with metadata (name, version, category) and optional lifecycle hooks. Register via `PluginLoader.register()`.
 - **System prompt**: Built in `buildSystemPrompt()` in `src/agent/loop.ts`. Instructions are Codex-aligned with Chinese responses.
 - **Tool output truncation**: Tool results are truncated before being added to message history to prevent context overflow.
 - **Context window**: Messages are compacted when exceeding 80K tokens. System prompt + AGENTS.md are re-injected after compaction.
-- **Data persistence**: Threads stored as JSON in `chitu-data/threads/`. Rollouts as JSONL in `chitu-data/rollouts/`. Memories in `chitu-data/memories/`.
+- **Data persistence**: Threads in `chitu-data/threads/`. Rollouts as JSONL in `chitu-data/rollouts/`. Memories in `chitu-data/memories/`.
 - **Hooks config**: Shell commands configured per event point, receive JSON on stdin, return JSON on stdout. See `src/hooks/types.ts` for input/output schemas.
+- **Source comments**: Each module has a JSDoc header explaining purpose and learning focus (学习重点), since this is an educational project.

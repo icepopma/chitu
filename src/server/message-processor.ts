@@ -43,6 +43,9 @@ export class MessageProcessor {
     command: string
     riskLevel: string
   }>()
+  /** 任务暂停追踪 */
+  private accumulatedPausedMs = 0
+  private pausedAt: number | null = null
 
   constructor(manager: ThreadManager) {
     this.manager = manager
@@ -59,8 +62,12 @@ export class MessageProcessor {
   removeClient(ws: WebSocket): void {
     this.clients.delete(ws)
     this.initialized.delete(ws)
-    // 注意：不断线不中断活跃的 Turn！
-    // Codex: "在服务器上保留状态和进度，即使标签页消失，任务也会继续运行"
+  }
+
+  /** 获取累计暂停时长（ms） */
+  getPausedDuration(): number {
+    if (this.pausedAt) return this.accumulatedPausedMs + (Date.now() - this.pausedAt)
+    return this.accumulatedPausedMs
   }
 
   /** 处理收到的 JSON-RPC 消息 */
@@ -213,6 +220,12 @@ export class MessageProcessor {
     const controller = new AbortController()
     this.activeTurns.set(threadId, controller)
 
+    // 恢复时累加暂停时长
+    if (this.pausedAt) {
+      this.accumulatedPausedMs += Date.now() - this.pausedAt
+      this.pausedAt = null
+    }
+
     // 立即返回响应（不等待 Turn 完成！）
     this.send(ws, createResponse(id, { threadId, status: 'started' }))
 
@@ -264,6 +277,7 @@ export class MessageProcessor {
     }
     controller.abort()
     this.activeTurns.delete(threadId)
+    this.pausedAt = Date.now()
     this.send(ws, createResponse(id, { interrupted: true }))
   }
 

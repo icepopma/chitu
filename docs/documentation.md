@@ -16,16 +16,20 @@
 - M5: ✅ 已完成（监控 + 告警）
 - M6: ✅ 已完成（Git 深度集成）
 - M7: ✅ 已完成（文件监听）
-- M8-M22: 待处理
+- M8: ✅ 已完成（多 Shell 支持）
+- M9: ✅ 已完成（MCP 集成）
+- M10: ✅ 已完成（WebSocket 认证）
+- M11: ✅ 已完成（CLI 模式）
+- M12-M22: 待处理
 
 ### 优先级分组
 | 优先级 | 范围 | Milestones |
 |--------|------|-----------|
 | P0 基础设施 | 让赤兔稳定运行 | M1 ✅, M2 ✅, M3 ✅ |
-| P1 可观测+安全 | 让赤兔可信赖 | M4 ✅, M5 ✅, M6（Git） |
-| P2 平台支持 | 让赤兔跑在更多环境 | M7（文件监听）, M8（多 Shell） |
-| P3 生态集成 | 扩展能力边界 | M9（MCP）, M10（认证） |
-| P4 多端接入 | CLI/沙盒/容器 | M11（CLI）, M12（沙盒）, M13（Docker CI） |
+| P1 可观测+安全 | 让赤兔可信赖 | M4 ✅, M5 ✅, M6 ✅ |
+| P2 平台支持 | 让赤兔跑在更多环境 | M7 ✅, M8 ✅ |
+| P3 生态集成 | 扩展能力边界 | M9 ✅, M10 ✅ |
+| P4 多端接入 | CLI/沙盒/容器 | M11 ✅, M12（沙盒）, M13（Docker CI） |
 | P5 高级功能 | Review/监控/多Agent | M14（Review）, M15（监控增强）, M16（多Agent） |
 | P6 远期目标 | 索引/IDE/用户/计费 | M17-M21 |
 | P7 收尾 | 文档 | M22 |
@@ -63,6 +67,18 @@
 **文件监听：**
 - **File Watcher + Skills Hot-Reload**（M7）— 3 个新文件：`src/watcher/file-watcher.ts`（fs.watch recursive 监听项目文件变更，防抖 500ms，过滤 node_modules/.git/dist 等噪声目录），`src/watcher/skills-watcher.ts`（专门监听 `.agents/skills/` 目录变更，检测 SKILL.md 文件变化后全量重载 Skills），`src/watcher/file-change-buffer.ts`（生产者-消费者缓冲区，连接 FileWatcher 和 Agent Loop，100 事件上限防内存泄漏）。集成方式：server 启动时创建 FileWatcher + SkillsWatcher → ThreadManager 持有 FileChangeBuffer → Agent Loop 每轮循环开始时 flush buffer 并格式化为"文件变更通知"注入到上下文消息中。
 
+**多 Shell 支持：**
+- **Shell 检测**（M8）— 自动检测用户 shell（zsh/bash/sh/fish），替代硬编码 `/bin/bash`。检测优先级：`SHELL` 环境变量 → 平台默认（macOS → zsh, Linux → bash）→ 兜底 `/bin/sh`。新增 `src/utils/shell.ts`（107 行），定义 `ShellType`、`ShellInfo` 类型，导出 `detectShell()`、`getShellArgs()`、`getShellPath()` 函数。exec 工具、配置系统默认值、env-diff 均已切换到动态检测。
+
+**MCP 集成：**
+- **MCP Client**（M9）— 实现 MCP（Model Context Protocol）客户端，支持 stdio 传输协议，动态发现并注册 MCP 服务器提供的工具。新增 `src/mcp/` 目录（4 个文件）：`types.ts`（MCP 类型定义：McpServerConfig、McpTool、McpCallResult）、`client.ts`（319 行 McpClient 类：connect → handshake → tools/list 发现 → 工具注册，10 秒请求超时，SIGTERM 断连）、`loader.ts`（配置加载：全局 `~/.chitu/mcp.json` + 项目 `.chitu/mcp.json` 覆盖）、`index.ts`（模块入口）。工具命名规则 `mcp__{server}__{tool}` 防冲突。审批策略：`auto-approve`（自动通过）/ `ask-user`（需用户确认，默认）。MCP 工具加载失败不阻塞核心工具（容错设计）。ToolRegistry 新增 `loadMcpTools()` 和 `disconnectMcp()` 方法。
+
+**WebSocket 认证：**
+- **API Key + JWT 双模式认证**（M10）— WebSocket 握手阶段验证身份，未认证连接直接拒绝（HTTP 401）。新增 `src/auth/index.ts`（147 行）：`extractTokenFromRequest()` 从 URL query 参数 `?token=xxx` 提取令牌，`authenticateConnection()` 依次尝试 API Key → JWT 验证。API Key 验证使用 `crypto.timingSafeEqual()` 防时序攻击。JWT 实现零外部依赖：自写 base64url 解码 + HMAC-SHA256 签名验证 + `exp` 过期检查。开发模式：未配置 `CHITU_API_KEY` 和 `CHITU_JWT_SECRET` 时自动放行。WebSocket Server 通过 `verifyClient` 回调集成。
+
+**CLI 模式：**
+- **终端交互界面**（M11）— 放弃原计划的 `ink`（React for CLI），改用 Node.js 内置 `readline/promises` 实现零外部依赖的 TUI。新增 `src/cli/index.ts`（154 行）。关键决策：**进程内架构**（CLI 直接实例化 ThreadManager，不走 WebSocket/JSON-RPC），避免网络开销。功能：交互式提示符 `你 > `、事件驱动实时输出（🐎 turn 开始、🔧 工具调用、流式文本输出）、内联审批流程、SIGINT 优雅退出。package.json 新增 `bin.chitu` 和 `npm run cli` 脚本。
+
 **配置与存储：**
 - **分层配置系统**（M2）— 4 层叠加：全局 `~/.chitu/config.json` → 项目 `.chitu/config.json` → 环境变量 → CLI 参数。后者覆盖前者。支持类型验证。7 个文件：types.ts（类型定义）、defaults.ts（默认值）、loader.ts（文件加载）、merge.ts（4 层合并）、env.ts（环境变量映射）、validate.ts（验证）、index.ts（入口 + 单例缓存）
 - **Neon PostgreSQL 数据库存储**（M3）— ThreadStore + MemoryStorage 双写策略（PG 主存储 + JSON 文件备份），启动时自动运行 5 个迁移（threads、rollout_events、memories 表 + 索引 + active_turns 表），数据库不可用时自动降级到文件存储
@@ -78,10 +94,19 @@ npm run dev
 npx tsx src/start-server.ts
 ```
 
+### CLI 模式
+```bash
+# 终端交互
+npm run cli
+```
+
 ### 环境变量
 - `ZHIPU_API_KEY` — 智谱 AI API Key（必需）
 - `ZHIPU_CODING_ENDPOINT` — GLM-5 API 端点（可选，有默认值）
 - `NEON_DATABASE_URL` — Neon PostgreSQL 连接串（可选，未配置时自动降级到文件存储）
+- `CHITU_API_KEY` — WebSocket 静态 API Key 认证（可选）
+- `CHITU_JWT_SECRET` — JWT 令牌签名密钥（可选）
+- `CHITU_AUTH_DISABLED` — 禁用认证，开发模式用（可选）
 
 ### 前端
 ```bash
@@ -108,11 +133,14 @@ cd web-ui && npm run dev
 ```
 src/
   agent/        — Agent Loop（核心循环）+ context compaction
+  auth/         — WebSocket 认证（API Key + JWT）
+  cli/          — CLI 终端模式（readline TUI）
   config/       — 分层配置系统（types/defaults/loader/merge/env/validate）
   context.ts    — AGENTS.md 层级加载 + 环境上下文
   db/           — 数据库连接 + 迁移 + Crash Recovery（Neon PostgreSQL）
   hooks/        — 5 个事件点的 Shell Hook 分发器
   llm/          — GLM-5 API 客户端（SSE streaming + 重试 + metrics 集成）
+  mcp/          — MCP 客户端（stdio 传输 + 动态工具发现）
   memories/     — 跨 session 知识提取和注入（PG 主 + JSON 备份）
   monitoring/   — Prometheus 指标（metrics.ts）+ 结构化 JSON 日志（logger.ts）
   rollout/      — JSONL 事件记录（审计/调试回放）
@@ -120,6 +148,7 @@ src/
   skills/       — Skills 加载系统
   thread/       — ThreadManager + ThreadStore（PG 主 + JSON 备份）
   tools/        — 工具系统：PluginLoader + 多个 Plugin（exec, files, plan, milestone, git v2.0）
+  utils/        — 通用工具（shell 检测、环境快照 diff）
   watcher/      — 文件监听：FileWatcher + SkillsWatcher + FileChangeBuffer
   types.ts      — 核心类型（Thread/Turn/Item/AppEvent）
 web-ui/         — React 19 + Vite 8 前端（Discord 风格）
@@ -138,6 +167,14 @@ Transport (WebSocket/JSON-RPC)
       → Agent Loop (while loop: LLM → tool_calls → execute → repeat)
 ```
 
+CLI 模式绕过前 2 层，直接实例化 ThreadManager：
+
+```
+CLI (readline)
+  → Thread Manager (direct, no JSON-RPC)
+    → Agent Loop
+```
+
 数据流：用户消息 → JSON-RPC → MessageProcessor → ThreadManager.runTurn() → Agent Loop → LLM + Tools → 事件流 → WebSocket 通知 → 前端
 
 ## 已知问题 / 后续
@@ -145,14 +182,16 @@ Transport (WebSocket/JSON-RPC)
 - ~~数据存储还是 JSON 文件，需迁移到 Neon PostgreSQL（M3）~~ ✅ 已完成
 - ~~无分层配置系统（M2）~~ ✅ 已完成
 - ~~无 Crash Recovery，进程崩溃丢失 turn 状态（M4）~~ ✅ 已完成
-- ~~无结构化日志和 Prometheus 指标（M5，进行中）~~ ✅ 已完成
+- ~~无结构化日志和 Prometheus 指标（M5）~~ ✅ 已完成
 - ~~无 Git 深度集成（M6）~~ ✅ 已完成
-- WebSocket 无认证（M10）
+- ~~无文件监听，Agent 无法感知外部变更（M7）~~ ✅ 已完成
+- ~~硬编码 `/bin/bash`，需多 Shell 支持（M8）~~ ✅ 已完成
+- ~~无 MCP 工具生态集成（M9）~~ ✅ 已完成
+- ~~WebSocket 无认证（M10）~~ ✅ 已完成
+- ~~无 CLI 终端模式（M11）~~ ✅ 已完成
 - exec 工具无沙盒隔离（M12）
 - 无 CI/CD（M13）
 - 监控面板指标不够丰富，需对标 Hermes HUD 增强（M15）
-- ~~无文件监听，Agent 无法感知外部变更（M7）~~ ✅ 已完成
-- 硬编码 `/bin/bash`，需多 Shell 支持（M8）
 
 ## 设计决策记录
 
@@ -181,13 +220,50 @@ Transport (WebSocket/JSON-RPC)
 - **为什么**：FileWatcher 是事件驱动的（随时可能触发），Agent Loop 是轮询驱动的（每轮循环检查一次）。Buffer 解耦了两者的时间模型，flush 操作保证变更只被消费一次。100 事件上限防止内存泄漏。
 - **Trade-off**：如果 Agent Loop 运行时间长，中间的变更会累积在 buffer 中，全部注入可能导致上下文膨胀。但实际场景中外部变更频率不高，500ms 防抖也减少了事件数量。
 
+### M8: 多 Shell 支持
+- **决策**：运行时自动检测用户 shell，不引入配置项
+- **为什么**：参考 Codex `codex-rs/core/src/shell.rs` 的自动检测模式。用户 shell 是环境事实，不需要手动配置。检测链 `SHELL` env → `os.platform()` 默认 → `/bin/sh` 兜底覆盖所有场景。
+- **Trade-off**：如果用户临时切换了 shell 但没更新 `SHELL` 环境变量，检测可能不准确。但这在实践中很少发生。
+
+### M9: MCP 集成
+- **决策**：MCP 工具命名加 `mcp__{server}__` 前缀，加载失败不阻塞核心工具
+- **为什么**：MCP 服务器提供的工具名可能与内置工具冲突（比如两个 MCP 服务器都提供 `read_file`）。前缀命名空间隔离避免冲突。容错设计确保 MCP 服务器不可用时赤兔核心功能不受影响。
+- **Trade-off**：工具名变长了（如 `mcp__filesystem__read_file`），Agent 调用时多几个 token。但换来的是无冲突的安全注册。
+
+### M10: WebSocket 认证
+- **决策**：自实现 JWT 验证，不引入 `jsonwebtoken` 依赖
+- **为什么**：JWT 验证只需 base64url 解码 + HMAC-SHA256 签名比对 + 过期检查，核心逻辑不到 50 行。引入 `jsonwebtoken` 会拉进一堆不需要的依赖（jws、jwa、lodash 等）。
+- **Trade-off**：不支持 RS256 等非对称算法，仅支持 HS256。对于单服务 WebSocket 认证场景足够，多服务间共享认证需要升级。
+
+### M11: CLI 模式
+- **决策**：放弃 ink（React for CLI），用 Node.js 内置 readline/promises + 进程内架构
+- **为什么**：ink 引入 React 运行时 + yoga-layout + ink 生态依赖，对一个 CLI 界面来说过重。readline/promises 是 Node.js 内置模块，零依赖。进程内架构（直接实例化 ThreadManager）比 stdio JSON-RPC 少一层网络开销，延迟更低。
+- **Trade-off**：readline 的 UI 能力比 ink 弱（不支持富文本布局、进度条等）。但 CLI 场景主要是文本输入输出，readline 足够。
+
 ## 变更日志
 
-- 2026-04-19: M6 完成 — 新增 4 个只读 git 工具（status/diff/blame/log）、2 个 Ghost Commit 工具（ghost_commit/ghost_rollback）、checkpoint 添加 Co-authored-by。git plugin 升级到 v2.0.0（8 个工具）。新增 src/tools/git/status.ts、diff.ts、blame.ts、log.ts、ghost.ts。
+- 2026-04-19: M11 完成 — 新增 src/cli/index.ts（154 行），readline TUI + 进程内架构。支持交互式对话、流式输出、内联审批、SIGINT 退出。package.json 新增 bin.chitu 和 npm run cli。
+
+- 2026-04-19: M10 完成 — 新增 src/auth/index.ts（147 行），WebSocket 握手认证。支持 API Key（timingSafeEqual 防时序攻击）+ JWT（自实现 HS256，零外部依赖）。开发模式未配置密钥时自动放行。
+
+- 2026-04-19: M9 完成 — 新增 src/mcp/ 目录（4 个文件：types.ts、client.ts、loader.ts、index.ts），MCP 客户端实现。stdio 传输 + JSON-RPC 2.0 + 动态工具发现 + `mcp__{server}__{tool}` 命名空间。工具注册容错。ToolRegistry 新增 loadMcpTools() / disconnectMcp()。
+
+- 2026-04-19: M8 完成 — 新增 src/utils/shell.ts（107 行），自动检测用户 shell（zsh/bash/sh/fish）。检测优先级：SHELL env → 平台默认 → /bin/sh。exec 工具、配置默认值、env-diff 全部切换到动态检测。
+
+- 2026-04-19: M7 完成 — 新增 src/watcher/ 目录（3 个文件：file-watcher.ts、skills-watcher.ts、file-change-buffer.ts），文件监听 + Skills 热重载。FileWatcher 500ms 防抖 + 噪声过滤，FileChangeBuffer 100 事件上限，SkillsWatcher 检测 SKILL.md 变更后全量重载。集成到 server 启动流程和 Agent Loop。
+
+- 2026-04-19: M6 完成 — 新增 4 个只读 git 工具（status/diff/blame/log）、2 个 Ghost Commit 工具（ghost_commit/ghost_rollback）、checkpoint 添加 Co-authored-by。git plugin 升级到 v2.0.0（8 个工具）。新增 src/tools/git/ 目录（status.ts、diff.ts、blame.ts、log.ts、ghost.ts、index.ts 重写）。
+
+- 2026-04-19: M5 完成 — 新增 src/monitoring/metrics.ts（8 个 Prometheus 指标）+ src/monitoring/logger.ts（StructuredLogger JSON 日志）。/metrics endpoint 输出 Prometheus exposition format，/health endpoint 返回 200。LLM metrics 通过接口注入避免循环依赖。
 
 - 2026-04-19: M4 完成 — 新增 src/db/crash-recovery.ts，active_turns 表持久化 turn 状态（start/complete/fail/interrupt），启动时 recoverInterruptedTurns() 扫描未完成 turn，envSnapshots 持久化到数据库。迁移 005_create_active_turns。
+
 - 2026-04-19: M3 完成 — ThreadStore 和 MemoryStorage 迁移到 Neon PostgreSQL，保留 JSON 文件作为备份。5 个数据库迁移（threads/rollout_events/memories 表 + 索引 + active_turns）。双写策略确保可靠性。新增 src/db/connection.ts、src/db/migrate.ts。
+
 - 2026-04-19: M2 完成 — 新增 src/config/ 目录（7 个文件），实现分层配置系统。全局 ~/.chitu/config.json → 项目 .chitu/config.json → 环境变量 → CLI 参数。支持类型验证和默认值。
+
 - 2026-04-18: 数据库从 SQLite 改为 Neon serverless PostgreSQL
+
 - 2026-04-18: 重新排序 milestones（22 个），新增 M7 文件监听、M8 多 Shell 支持。将 PROGRESS.md 未完成任务合并。M1 标记为 completed。
+
 - 2026-04-18: 创建 documentation.md，记录项目初始状态

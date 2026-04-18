@@ -222,9 +222,10 @@ export function useChituSocket(options?: { url?: string }) {
 
     autoApproveRef.current = !!autoApprove
     clearItems()
+    setCurrentPlan(null)
     setTurnStatus('in_progress')
     await sendRequest('turn/start', { threadId, message, autoApprove })
-  }, [clearItems, setTurnStatus])
+  }, [clearItems, setCurrentPlan, setTurnStatus])
 
   const deleteThread = useCallback(async (threadId: string) => {
     try {
@@ -253,6 +254,25 @@ export function useChituSocket(options?: { url?: string }) {
     setTurnStatus('idle')
   }, [setTurnStatus])
 
+  /** 暂停当前 turn（interrupt），恢复时发 continue */
+  const pauseResume = useCallback(async () => {
+    const threadId = currentThreadIdRef.current
+    if (!threadId) return
+
+    const { turnStatus } = useAppStore.getState()
+
+    if (turnStatus === 'in_progress') {
+      // 暂停
+      autoApproveRef.current = false
+      await sendRequest('turn/interrupt', { threadId })
+      setTurnStatus('idle')
+    } else {
+      // 恢复：发 continue 消息
+      setTurnStatus('in_progress')
+      await sendRequest('turn/start', { threadId, message: '继续', autoApprove: autoApproveRef.current })
+    }
+  }, [setTurnStatus])
+
   /** 响应审批请求 */
   const respondApproval = useCallback(async (approvalId: string, approved: boolean) => {
     await sendRequest('approval/respond', { id: approvalId, approved })
@@ -264,5 +284,5 @@ export function useChituSocket(options?: { url?: string }) {
     connect()
   }, [connect])
 
-  return { connect, createThread, deleteThread, forkThread, resumeThread, sendMessage, interruptTurn, respondApproval, connected, initialized }
+  return { connect, createThread, deleteThread, forkThread, resumeThread, sendMessage, interruptTurn, pauseResume, respondApproval, connected, initialized }
 }

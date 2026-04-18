@@ -62,7 +62,7 @@ export interface Item {
 
 // ===== Plan（对齐 Codex update_plan 工具） =====
 
-export type StepStatus = 'pending' | 'in_progress' | 'completed'
+export type StepStatus = 'pending' | 'in_progress' | 'completed' | 'failed'
 
 export interface PlanStep {
   step: string

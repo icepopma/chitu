@@ -1,13 +1,15 @@
 import { useEffect, useRef } from 'react'
 import { useAppStore } from '../lib/store'
+import { useChituSocket } from '../hooks/useChituSocket'
 import { MessageItem } from './MessageItem'
 import { PlanPanel } from './PlanPanel'
 import { WelcomeScreen } from './WelcomeScreen'
 import { ApprovalBanner } from './ApprovalBanner'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Pause, Play } from 'lucide-react'
 
 export function ChatArea() {
   const { currentThreadId, items, turnStatus } = useAppStore()
+  const { pauseResume } = useChituSocket()
   const scrollRef = useRef<HTMLDivElement>(null)
 
   // 自动滚动到底部
@@ -28,13 +30,14 @@ export function ChatArea() {
 
   // 有线程但没消息
   const isEmpty = items.length === 0
+  const isRunning = turnStatus === 'in_progress'
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Header */}
       <div className="h-12 flex items-center px-4 border-b border-[#2a2a2a] bg-[#1e1e1e] shrink-0">
         <span className="text-sm font-medium text-white">对话</span>
-        {turnStatus === 'in_progress' && (
+        {isRunning && (
           <span className="ml-3 flex items-center gap-1.5 text-xs text-[#5865f2]">
             <Loader2 className="w-3 h-3 animate-spin" />
             Agent 运行中...
@@ -48,6 +51,31 @@ export function ChatArea() {
         )}
         {turnStatus === 'interrupted' && (
           <span className="ml-3 text-xs text-[#da373c]">已中断</span>
+        )}
+
+        {/* 暂停/恢复按钮：只在 agent 运行或被中断时显示 */}
+        {(turnStatus === 'in_progress' || turnStatus === 'interrupted') && (
+          <button
+            onClick={pauseResume}
+            className={`ml-auto flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors ${
+              isRunning
+                ? 'bg-[#faa61a]/20 text-[#faa61a] hover:bg-[#faa61a]/30'
+                : 'bg-[#43b581]/20 text-[#43b581] hover:bg-[#43b581]/30'
+            }`}
+            title={isRunning ? '暂停 Agent' : '恢复 Agent'}
+          >
+            {isRunning ? (
+              <>
+                <Pause className="w-3.5 h-3.5" />
+                <span>暂停</span>
+              </>
+            ) : (
+              <>
+                <Play className="w-3.5 h-3.5" />
+                <span>恢复</span>
+              </>
+            )}
+          </button>
         )}
       </div>
 

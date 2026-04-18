@@ -59,7 +59,7 @@ export function createAppServer(options?: AppServerOptions) {
       res.end(chituMetrics.render())
     } else if (req.url?.startsWith('/dashboard')) {
       res.writeHead(200, { 'Content-Type': 'application/json' })
-      res.end(JSON.stringify(buildDashboardData(manager, projectRoot), null, 2))
+      res.end(JSON.stringify(buildDashboardData(manager, projectRoot, processor), null, 2))
     } else {
       res.writeHead(426, { 'Content-Type': 'text/plain' })
       res.end('Upgrade Required. Use WebSocket or /status /dashboard endpoint.')
@@ -144,7 +144,7 @@ export function createAppServer(options?: AppServerOptions) {
 }
 
 /** 聚合 dashboard 数据 */
-function buildDashboardData(manager: ThreadManager, projectRoot: string) {
+function buildDashboardData(manager: ThreadManager, projectRoot: string, processor: MessageProcessor) {
   const status = manager.getStatus()
 
   // 里程碑进度（含任务时长）
@@ -180,7 +180,7 @@ function buildDashboardData(manager: ThreadManager, projectRoot: string) {
   const taskStartedAt = startedMilestones.length > 0 ? Math.min(...startedMilestones.map(m => m.startedAt!)) : undefined
   const lastCompletedAt = milestones.filter(m => m.completedAt).length > 0 ? Math.max(...milestones.filter(m => m.completedAt).map(m => m.completedAt!)) : undefined
   const hasActive = milestones.some(m => m.status === 'in_progress')
-  const taskDurationMs = taskStartedAt ? ((hasActive ? now : (lastCompletedAt || now)) - taskStartedAt) : undefined
+  const taskDurationMs = taskStartedAt ? ((hasActive ? now : (lastCompletedAt || now)) - taskStartedAt - processor.getPausedDuration()) : undefined
 
   // 最近的 rollout events
   const recentEvents = loadRecentRolloutEvents(projectRoot, 20)

@@ -4,11 +4,15 @@
   "description": "A minimal agent system built from scratch",
   "type": "module",
   "main": "dist/main.js",
+  "bin": {
+    "chitu": "dist/cli/index.js"
+  },
   "scripts": {
     "dev": "tsx watch src/main.ts",
     "build": "tsc",
     "start": "node dist/main.js",
-    "test": "node --experimental-vm-modules --test tests/"
+    "test": "node --experimental-vm-modules --test tests/",
+    "cli": "tsx src/cli/index.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",

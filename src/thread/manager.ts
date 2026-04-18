@@ -24,6 +24,7 @@ import { recordTurnStart, recordTurnComplete, updateTurnEnvSnapshot, getLatestEn
 import { isDbAvailable } from '../db/connection.js'
 import { chituMetrics } from '../monitoring/metrics.js'
 import type { FileChangeBuffer } from '../watcher/file-change-buffer.js'
+import { loadMilestonePlan } from '../tools/milestone-plan/parser.js'
 
 /** 服务器运行状态 */
 export interface ServerStatus {
@@ -423,6 +424,26 @@ export class ThreadManager {
                   explanation,
                   thread,
                 })
+              }
+
+              // milestone_plan 也触发 plan/updated，让前端 PlanPanel 实时更新
+              if (tc.function.name === 'milestone_plan') {
+                try {
+                  const loaded = loadMilestonePlan(process.cwd())
+                  if (loaded) {
+                    const plan: PlanStep[] = loaded.milestones.map(m => ({
+                      step: `${m.id}: ${m.title}`,
+                      status: m.status === 'in_progress' ? 'in_progress' as const : m.status === 'completed' ? 'completed' as const : m.status === 'failed' ? 'failed' as const : 'pending' as const,
+                    }))
+                    thread.currentPlan = plan
+                    this.emit({
+                      type: 'plan/updated',
+                      plan,
+                      explanation: `milestone ${toolArgs.command}: ${toolArgs.milestoneId || ''}`,
+                      thread,
+                    })
+                  }
+                } catch { /* non-blocking */ }
               }
             }
           }
