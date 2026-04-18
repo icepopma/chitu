@@ -65,7 +65,8 @@ Transport (WebSocket/JSON-RPC)
 | Skills | `src/skills/` | Skills loading system for injecting specialized capabilities into agent context. |
 | Rollout Recorder | `src/rollout/recorder.ts` | JSONL event stream for audit/debug replay, stored in `chitu-data/rollouts/`. |
 | Command Policy | `src/tools/policy.ts` | Classifies commands as read/write/dangerous for approval flow. |
-| WebSocket Server | `src/server/` | JSON-RPC 2.0 over WebSocket. `index.ts` (transport) → `message-processor.ts` (protocol translation) → `json-rpc.ts` (parsing). |
+| WebSocket Server | `src/server/` | JSON-RPC 2.0 over WebSocket. `index.ts` (transport + HTTP endpoints) → `message-processor.ts` (protocol translation) → `json-rpc.ts` (parsing). HTTP endpoints: `/status` (runtime metrics), `/dashboard` (aggregated status + milestones + rollout events). |
+| Monitoring Dashboard | `web-ui/src/components/DashboardPage.tsx` | Discord-style monitoring page with panels for server info, metrics, milestone progress, milestone list, activity feed. Accessible via Activity icon in sidebar. References https://github.com/joeynyc/hermes-hudui for future enhancements (M20). |
 
 ### Frontend (`web-ui/`)
 

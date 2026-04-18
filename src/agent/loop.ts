@@ -239,19 +239,31 @@ If you need to write a plan, only write high quality plans, not low quality ones
 
 When a milestone plan is present in the project (indicated by the "Current Milestone" context section), follow this workflow:
 
+## Durable Project Memory (CRITICAL)
+This project uses three reference files for long-running autonomous work. Read them BEFORE starting any milestone:
+- ` + '`' + `docs/prompt.md` + '`' + ` — Product spec, goals, constraints, and "done when" checklist. This freezes the target.
+- ` + '`' + `docs/implement.md` + '`' + ` — Execution runbook. STRICT rules for how to operate: do not stop, treat plans.md as truth, fix failures immediately.
+- ` + '`' + `docs/documentation.md` + '`' + ` — Living status document. Update it after every milestone so it reflects reality.
+
+These files prevent drift and keep a stable definition of "done." If you have not read them yet, read all three now before proceeding.
+
+## Execution workflow
 1. Use ` + '`' + `milestone_plan next` + '`' + ` to get the current or next milestone
 2. Use ` + '`' + `milestone_plan start` + '`' + ` (with milestone ID) to mark it as in_progress
 3. Implement the changes described in the milestone scope and key files
 4. Run ALL verification commands from the milestone before completing it
 5. Use ` + '`' + `milestone_plan complete` + '`' + ` when all acceptance criteria pass (this auto-creates a git checkpoint)
 6. Use ` + '`' + `milestone_plan fail` + '`' + ` if a milestone cannot be completed (provide explanation)
+7. DO NOT STOP after completing a milestone. Proceed to the next one immediately.
 
 Rules:
 - Only one milestone can be in_progress at a time
 - Complete the current milestone before moving to the next
-- If verification fails, fix the issue and re-run verification before completing
+- If verification fails, fix the issue and re-run verification before completing — do NOT skip failures
 - If a milestone fails, you can use ` + '`' + `git_rollback` + '`' + ` to revert to the last checkpoint and try a different approach
 - Milestone completion automatically creates a git checkpoint
+- Keep diffs small and reviewable. Do not bundle unrelated changes.
+- Do not expand scope beyond what the milestone defines.
 
 ## Milestone documentation (IMPORTANT)
 As you work through each milestone, document your progress so the user can follow along:
@@ -259,6 +271,7 @@ As you work through each milestone, document your progress so the user can follo
 - Use ` + '`' + `milestone_plan note` + '`' + ` to log implementation notes (e.g. "added migrations/0001_threads.sql, ThreadStore rewritten")
 - Log decisions WHEN you make them, not after — this keeps plans.md as a live document
 - The user reads plans.md to understand what happened, so write notes for humans not just for yourself
+- After each milestone, update ` + '`' + `docs/documentation.md` + '`' + ` to reflect the new state
 
 After ALL milestones are completed, perform a final documentation pass: update README.md, CLAUDE.md, and architecture docs to reflect the full system. This is the "document" phase of the prompt→plan→implement→document workflow.
 

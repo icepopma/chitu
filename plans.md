@@ -20,6 +20,7 @@
 - [ ] M17: 用量追踪 + 计费
 - [ ] M18: 多模态支持
 - [ ] M19: Documentation + Final Verification
+- [ ] M20: 增强监控面板（对标 Hermes HUD）
 
 ## M1: LLM API 可靠性（重试 + 降级）
 - **Scope**: 在 `src/llm/client.ts` 中新增 `chatWithRetry()` 方法，实现指数退避重试（3 次，1s/2s/4s）。区分 429（限流）和 500（服务端）自动重试，400（客户端）不重试。可选 fallback model 配置。
@@ -231,4 +232,21 @@
   - `npm run build`、`npm test`、`npx tsc --noEmit` 全部通过
   - `npm run dev` 一键启动完整服务
 - **Verification Commands**: `npm run build`, `npm test`, `npx tsc --noEmit`
+- **Status**: pending
+
+## M20: 增强监控面板（对标 Hermes HUD）
+- **Scope**: 参考 https://github.com/joeynyc/hermes-hudui 仓库，将赤兔的监控面板从基础指标扩展为丰富的多维度监控系统。后端扩展 `/dashboard` 端点，从 rollout JSONL 中提取工具使用频率和每日活动统计；从 memories 目录读取记忆状态（条目数、按类别统计）；增加 token 成本估算（按模型/按天）。前端增加 Tab 导航（总览/Token 成本/记忆/工具使用），新增 Sparkline 折线图组件（每日活动趋势）、容量条组件（value/max 可视化）、工具使用频率横向条形图（Top N）、增长快照 Delta 对比。保持 Discord 风格 UI 一致性。
+- **Key Files**: `src/server/index.ts`, `web-ui/src/components/DashboardPage.tsx`, `web-ui/src/components/dashboard/`（新增目录）
+- **Acceptance Criteria**:
+  - `/dashboard` 端点返回工具使用频率统计（从 rollout JSONL 提取）
+  - `/dashboard` 端点返回每日活动统计（消息数/turn 数/token 数按天聚合）
+  - `/dashboard` 端点返回记忆状态（条目数、按类别统计）
+  - `/dashboard` 端点返回 token 成本估算（按模型/按天）
+  - 前端有 Tab 导航切换不同面板（总览/Token 成本/记忆/工具使用）
+  - Sparkline 折线图展示每日活动趋势
+  - 工具使用频率横向条形图展示 Top N 工具
+  - 容量条组件可视化 token/memory 使用
+  - 保持现有 Discord 风格 UI 不变
+  - `npx tsc --noEmit` 通过
+- **Verification Commands**: `npx tsc --noEmit`, `curl http://localhost:8080/dashboard | jq .`
 - **Status**: pending
