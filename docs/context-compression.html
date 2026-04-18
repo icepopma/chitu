@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Context Compression — 上下文压缩</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'JetBrains Mono', monospace; background: #020617; min-height: 100vh; padding: 2rem; color: white; }
+    .container { max-width: 1200px; margin: 0 auto; }
+    .header { margin-bottom: 2rem; }
+    .header-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem; }
+    .pulse-dot { width: 12px; height: 12px; background: #a78bfa; border-radius: 50%; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.025em; }
+    .subtitle { color: #94a3b8; font-size: 0.875rem; margin-left: 1.75rem; }
+    .diagram-container { background: rgba(15, 23, 42, 0.5); border-radius: 1rem; border: 1px solid #1e293b; padding: 1.5rem; overflow-x: auto; }
+    svg { width: 100%; min-width: 900px; display: block; }
+    .footer { text-align: center; margin-top: 1.5rem; color: #475569; font-size: 0.75rem; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="header-row">
+        <div class="pulse-dot"></div>
+        <h1>Context Compression</h1>
+      </div>
+      <p class="subtitle">上下文压缩：80K token 阈值 → 摘要 + 保留最近</p>
+    </div>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 960 580">
+        <defs>
+          <marker id="ah" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#64748b" />
+          </marker>
+          <marker id="ah-violet" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#a78bfa" />
+          </marker>
+          <marker id="ah-emerald" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#34d399" />
+          </marker>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+          </pattern>
+        </defs>
+
+        <rect width="100%" height="100%" fill="url(#grid)" />
+
+        <!-- ===== BEFORE (left) ===== -->
+        <text x="170" y="35" fill="white" font-size="12" font-weight="700" text-anchor="middle">BEFORE</text>
+        <text x="170" y="52" fill="#fb7185" font-size="9" text-anchor="middle">~100K token · 超过 80K 阈值</text>
+
+        <!-- Initial context (kept) -->
+        <rect x="50" y="65" width="240" height="80" rx="6" fill="#0f172a" stroke-width="0"/>
+        <rect x="50" y="65" width="240" height="80" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="170" y="85" fill="#34d399" font-size="10" font-weight="600" text-anchor="middle">初始上下文</text>
+        <text x="170" y="100" fill="#94a3b8" font-size="8" text-anchor="middle">system prompt + AGENTS.md</text>
+        <text x="170" y="114" fill="#94a3b8" font-size="8" text-anchor="middle">+ skills + memories + env</text>
+        <text x="170" y="130" fill="#34d399" font-size="7" text-anchor="middle">✓ 永远保留</text>
+
+        <!-- History (compressed) -->
+        <rect x="50" y="155" width="240" height="250" rx="6" fill="#0f172a" stroke-width="0"/>
+        <rect x="50" y="155" width="240" height="250" rx="6" fill="rgba(136, 19, 55, 0.15)" stroke="#fb7185" stroke-width="1.5" stroke-dasharray="4,4"/>
+        <text x="170" y="175" fill="#fb7185" font-size="10" font-weight="600" text-anchor="middle">对话历史（30 轮）</text>
+
+        <text x="65" y="200" fill="#94a3b8" font-size="8">Turn 1: user → assistant → tool</text>
+        <text x="65" y="216" fill="#94a3b8" font-size="8">Turn 2: tool_result → assistant</text>
+        <text x="65" y="232" fill="#94a3b8" font-size="8">Turn 3: user → assistant → tool</text>
+        <text x="65" y="248" fill="#475569" font-size="8">... (省略 24 轮) ...</text>
+        <text x="65" y="264" fill="#94a3b8" font-size="8">Turn 28: tool_result → assistant</text>
+        <text x="65" y="280" fill="#94a3b8" font-size="8">Turn 29: user → assistant → tool</text>
+        <text x="65" y="296" fill="#94a3b8" font-size="8">Turn 30: tool_result → assistant</text>
+
+        <text x="170" y="325" fill="#fb7185" font-size="8" font-weight="600" text-anchor="middle">⚠ 约 70K token</text>
+        <text x="170" y="340" fill="#94a3b8" font-size="7" text-anchor="middle">大量冗余工具输出</text>
+        <text x="170" y="355" fill="#94a3b8" font-size="7" text-anchor="middle">重复的文件读取内容</text>
+        <text x="170" y="370" fill="#94a3b8" font-size="7" text-anchor="middle">已过时的中间状态</text>
+        <text x="170" y="390" fill="#475569" font-size="7" text-anchor="middle">将被 LLM 摘要压缩</text>
+
+        <!-- Recent (kept) -->
+        <rect x="50" y="415" width="240" height="60" rx="6" fill="#0f172a" stroke-width="0"/>
+        <rect x="50" y="415" width="240" height="60" rx="6" fill="rgba(6, 78, 59, 0.3)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="170" y="435" fill="#34d399" font-size="10" font-weight="600" text-anchor="middle">最近对话（5 轮）</text>
+        <text x="170" y="450" fill="#94a3b8" font-size="8" text-anchor="middle">约 10K token</text>
+        <text x="170" y="465" fill="#34d399" font-size="7" text-anchor="middle">✓ 保留原样</text>
+
+        <!-- ===== ARROW ===== -->
+        <line x1="310" y1="270" x2="400" y2="270" stroke="#a78bfa" stroke-width="2" marker-end="url(#ah-violet)"/>
+        <text x="355" y="258" fill="#a78bfa" font-size="9" font-weight="600" text-anchor="middle">Compress</text>
+        <text x="355" y="290" fill="#94a3b8" font-size="7" text-anchor="middle">compactMessages()</text>
+
+        <!-- ===== AFTER (right) ===== -->
+        <text x="640" y="35" fill="white" font-size="12" font-weight="700" text-anchor="middle">AFTER</text>
+        <text x="640" y="52" fill="#34d399" font-size="9" text-anchor="middle">~30K token · 安全范围内</text>
+
+        <!-- Initial context (kept) -->
+        <rect x="420" y="65" width="240" height="80" rx="6" fill="#0f172a" stroke-width="0"/>
+        <rect x="420" y="65" width="240" height="80" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="540" y="85" fill="#34d399" font-size="10" font-weight="600" text-anchor="middle">初始上下文（不变）</text>
+        <text x="540" y="100" fill="#94a3b8" font-size="8" text-anchor="middle">system prompt + AGENTS.md</text>
+        <text x="540" y="114" fill="#94a3b8" font-size="8" text-anchor="middle">+ skills + memories + env</text>
+        <text x="540" y="130" fill="#34d399" font-size="7" text-anchor="middle">✓ 原样保留</text>
+
+        <!-- Summary (new) -->
+        <rect x="420" y="155" width="240" height="120" rx="6" fill="#0f172a" stroke-width="0"/>
+        <rect x="420" y="155" width="240" height="120" rx="6" fill="rgba(76, 29, 149, 0.3)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="540" y="175" fill="#a78bfa" font-size="10" font-weight="600" text-anchor="middle">LLM 生成的摘要</text>
+
+        <text x="435" y="198" fill="#94a3b8" font-size="8">✓ 关键决策：用 pnpm、tabs 缩进</text>
+        <text x="435" y="214" fill="#94a3b8" font-size="8">✓ 文件修改：改了 loop.ts、context.ts</text>
+        <text x="435" y="230" fill="#94a3b8" font-size="8">✓ 错误方案：精确匹配失败 3 次</text>
+        <text x="435" y="246" fill="#94a3b8" font-size="8">✓ 最终方案：改用 apply_patch</text>
+        <text x="540" y="265" fill="#a78bfa" font-size="7" text-anchor="middle">~3K token（替代 70K 历史）</text>
+
+        <!-- Recent (kept) -->
+        <rect x="420" y="285" width="240" height="60" rx="6" fill="#0f172a" stroke-width="0"/>
+        <rect x="420" y="285" width="240" height="60" rx="6" fill="rgba(6, 78, 59, 0.3)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="540" y="305" fill="#34d399" font-size="10" font-weight="600" text-anchor="middle">最近对话（5 轮·不变）</text>
+        <text x="540" y="320" fill="#94a3b8" font-size="8" text-anchor="middle">约 10K token</text>
+        <text x="540" y="335" fill="#34d399" font-size="7" text-anchor="middle">✓ 原样保留</text>
+
+        <!-- Size comparison -->
+        <text x="540" y="380" fill="white" font-size="11" font-weight="700" text-anchor="middle">100K → 30K token</text>
+        <text x="540" y="398" fill="#34d399" font-size="9" text-anchor="middle">节省 70% 上下文空间</text>
+
+        <!-- What gets kept vs discarded -->
+        <text x="720" y="70" fill="white" font-size="10" font-weight="600">压缩规则</text>
+
+        <text x="720" y="95" fill="#34d399" font-size="9" font-weight="600">保留 ✓</text>
+        <text x="720" y="112" fill="#94a3b8" font-size="8">• 关键架构决策</text>
+        <text x="720" y="128" fill="#94a3b8" font-size="8">• 文件修改记录</text>
+        <text x="720" y="144" fill="#94a3b8" font-size="8">• 错误和解决方案</text>
+        <text x="720" y="160" fill="#94a3b8" font-size="8">• 用户明确偏好</text>
+
+        <text x="720" y="195" fill="#fb7185" font-size="9" font-weight="600">丢弃 ✗</text>
+        <text x="720" y="212" fill="#94a3b8" font-size="8">• 冗余工具输出</text>
+        <text x="720" y="228" fill="#94a3b8" font-size="8">• 重复的文件读取</text>
+        <text x="720" y="244" fill="#94a3b8" font-size="8">• 过时的中间状态</text>
+        <text x="720" y="260" fill="#94a3b8" font-size="8">• 成功工具的 stdout</text>
+
+        <!-- Compression process -->
+        <text x="720" y="300" fill="white" font-size="10" font-weight="600">压缩流程</text>
+        <text x="720" y="320" fill="#94a3b8" font-size="8">1. 估算 messages 总 token</text>
+        <text x="720" y="336" fill="#94a3b8" font-size="8">2. 超 80K 阈值 → 触发</text>
+        <text x="720" y="352" fill="#94a3b8" font-size="8">3. 分离初始/历史/最近</text>
+        <text x="720" y="368" fill="#94a3b8" font-size="8">4. 历史 → LLM 摘要</text>
+        <text x="720" y="384" fill="#94a3b8" font-size="8">5. 重组：初始+摘要+最近</text>
+
+        <!-- Token budget -->
+        <text x="720" y="420" fill="white" font-size="10" font-weight="600">Token 预算</text>
+        <rect x="720" y="432" width="200" height="16" rx="3" fill="rgba(6, 78, 59, 0.3)" stroke="#34d399" stroke-width="1"/>
+        <text x="820" y="444" fill="#34d399" font-size="7" text-anchor="middle">初始上下文 ~17K</text>
+        <rect x="720" y="454" width="60" height="16" rx="3" fill="rgba(76, 29, 149, 0.3)" stroke="#a78bfa" stroke-width="1"/>
+        <text x="750" y="466" fill="#a78bfa" font-size="7" text-anchor="middle">摘要 ~3K</text>
+        <rect x="785" y="454" width="135" height="16" rx="3" fill="rgba(6, 78, 59, 0.3)" stroke="#34d399" stroke-width="1"/>
+        <text x="852" y="466" fill="#34d399" font-size="7" text-anchor="middle">最近对话 ~10K</text>
+
+        <text x="720" y="498" fill="#94a3b8" font-size="8">总计 ~30K / 128K 窗口</text>
+        <text x="720" y="514" fill="#475569" font-size="7">留 98K 给后续对话使用</text>
+
+      </svg>
+    </div>
+
+    <p class="footer">
+      Context Compression &middot; Chitu (赤兔) &middot; 超 80K 阈值 → LLM 摘要历史 → 保留初始上下文 + 最近对话
+    </p>
+  </div>
+</body>
+</html>

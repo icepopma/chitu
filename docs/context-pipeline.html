@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Context Pipeline — 上下文管道</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'JetBrains Mono', monospace; background: #020617; min-height: 100vh; padding: 2rem; color: white; }
+    .container { max-width: 1200px; margin: 0 auto; }
+    .header { margin-bottom: 2rem; }
+    .header-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem; }
+    .pulse-dot { width: 12px; height: 12px; background: #a78bfa; border-radius: 50%; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.025em; }
+    .subtitle { color: #94a3b8; font-size: 0.875rem; margin-left: 1.75rem; }
+    .diagram-container { background: rgba(15, 23, 42, 0.5); border-radius: 1rem; border: 1px solid #1e293b; padding: 1.5rem; overflow-x: auto; }
+    svg { width: 100%; min-width: 900px; display: block; }
+    .footer { text-align: center; margin-top: 1.5rem; color: #475569; font-size: 0.75rem; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="header-row">
+        <div class="pulse-dot"></div>
+        <h1>Context Pipeline</h1>
+      </div>
+      <p class="subtitle">Agent 每次思考时，上下文窗口里装了什么</p>
+    </div>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 960 720">
+        <defs>
+          <marker id="ah" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#64748b" />
+          </marker>
+          <marker id="ah-emerald" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#34d399" />
+          </marker>
+          <marker id="ah-cyan" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#22d3ee" />
+          </marker>
+          <marker id="ah-amber" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#fbbf24" />
+          </marker>
+          <marker id="ah-violet" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#a78bfa" />
+          </marker>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+          </pattern>
+        </defs>
+
+        <rect width="100%" height="100%" fill="url(#grid)" />
+
+        <!-- ARROWS — drawn first for z-order -->
+
+        <!-- Source boxes → Context Window -->
+        <line x1="310" y1="95" x2="568" y2="95" stroke="#34d399" stroke-width="1.5" marker-end="url(#ah-emerald)"/>
+        <line x1="310" y1="195" x2="568" y2="195" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#ah-cyan)"/>
+        <line x1="310" y1="295" x2="568" y2="295" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#ah-violet)"/>
+        <line x1="310" y1="395" x2="568" y2="395" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#ah)"/>
+        <line x1="310" y1="495" x2="568" y2="495" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#ah-amber)"/>
+
+        <!-- Context Window → LLM API -->
+        <line x1="780" y1="295" x2="828" y2="295" stroke="#fbbf24" stroke-width="2" marker-end="url(#ah-amber)"/>
+
+        <!-- Labels on arrows -->
+        <text x="438" y="88" fill="#94a3b8" font-size="8" text-anchor="middle">project knowledge</text>
+        <text x="438" y="188" fill="#94a3b8" font-size="8" text-anchor="middle">on-demand skills</text>
+        <text x="438" y="288" fill="#94a3b8" font-size="8" text-anchor="middle">cross-session</text>
+        <text x="438" y="388" fill="#94a3b8" font-size="8" text-anchor="middle">runtime info</text>
+        <text x="438" y="488" fill="#94a3b8" font-size="8" text-anchor="middle">user task</text>
+
+        <!-- LAYER 1: System Prompt (source) -->
+        <rect x="50" y="65" width="260" height="60" rx="6" fill="#0f172a" stroke-width="0"/>
+        <rect x="50" y="65" width="260" height="60" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="180" y="88" fill="white" font-size="12" font-weight="600" text-anchor="middle">① System Prompt</text>
+        <text x="180" y="106" fill="#94a3b8" font-size="9" text-anchor="middle">身份 · 行为规范 · 工具指南 · 编码准则</text>
+
+        <!-- LAYER 2: AGENTS.md (source) -->
+        <rect x="50" y="165" width="260" height="60" rx="6" fill="#0f172a" stroke-width="0"/>
+        <rect x="50" y="165" width="260" height="60" rx="6" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="180" y="188" fill="white" font-size="12" font-weight="600" text-anchor="middle">② AGENTS.md</text>
+        <text x="180" y="206" fill="#94a3b8" font-size="9" text-anchor="middle">项目架构 · 技术栈 · 分层收集（root→cwd）</text>
+
+        <!-- LAYER 3: Skills (source) -->
+        <rect x="50" y="265" width="260" height="60" rx="6" fill="#0f172a" stroke-width="0"/>
+        <rect x="50" y="265" width="260" height="60" rx="6" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="180" y="288" fill="white" font-size="12" font-weight="600" text-anchor="middle">③ Skills</text>
+        <text x="180" y="306" fill="#94a3b8" font-size="9" text-anchor="middle">专业指导 · 按需匹配 · 摘要常驻 + 全文注入</text>
+
+        <!-- LAYER 4: Memories (source) -->
+        <rect x="50" y="365" width="260" height="60" rx="6" fill="#0f172a" stroke-width="0"/>
+        <rect x="50" y="365" width="260" height="60" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="180" y="388" fill="white" font-size="12" font-weight="600" text-anchor="middle">④ Memories</text>
+        <text x="180" y="406" fill="#94a3b8" font-size="9" text-anchor="middle">跨会话知识 · 5 类记忆 · 自动提取注入</text>
+
+        <!-- LAYER 5: Environment (source) -->
+        <rect x="50" y="465" width="260" height="60" rx="6" fill="#0f172a" stroke-width="0"/>
+        <rect x="50" y="465" width="260" height="60" rx="6" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+        <text x="180" y="488" fill="white" font-size="12" font-weight="600" text-anchor="middle">⑤ Environment</text>
+        <text x="180" y="506" fill="#94a3b8" font-size="9" text-anchor="middle">cwd · shell · 日期 · 差异检测（delta）</text>
+
+        <!-- LAYER 6: User Input (source) -->
+        <rect x="50" y="565" width="260" height="60" rx="6" fill="#0f172a" stroke-width="0"/>
+        <rect x="50" y="565" width="260" height="60" rx="6" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="180" y="588" fill="white" font-size="12" font-weight="600" text-anchor="middle">⑥ User Input</text>
+        <text x="180" y="606" fill="#94a3b8" font-size="9" text-anchor="middle">用户任务 · 自然语言描述</text>
+
+        <!-- CONTEXT WINDOW (large box) -->
+        <rect x="575" y="50" width="205" height="590" rx="10" fill="#0f172a" stroke-width="0"/>
+        <rect x="575" y="50" width="205" height="590" rx="10" fill="rgba(15, 23, 42, 0.6)" stroke="#1e293b" stroke-width="2"/>
+        <text x="677" y="75" fill="white" font-size="11" font-weight="700" text-anchor="middle">LLM Context Window</text>
+
+        <!-- Context layers inside -->
+        <rect x="590" y="88" width="175" height="52" rx="4" fill="rgba(6, 78, 59, 0.3)" stroke="#34d399" stroke-width="1"/>
+        <text x="677" y="110" fill="#34d399" font-size="9" font-weight="600" text-anchor="middle">[system] 身份 + 规范</text>
+        <text x="677" y="126" fill="#94a3b8" font-size="8" text-anchor="middle">永远保留 · 不压缩</text>
+
+        <rect x="590" y="150" width="175" height="52" rx="4" fill="rgba(8, 51, 68, 0.3)" stroke="#22d3ee" stroke-width="1"/>
+        <text x="677" y="172" fill="#22d3ee" font-size="9" font-weight="600" text-anchor="middle">[user] AGENTS.md + Skills</text>
+        <text x="677" y="188" fill="#94a3b8" font-size="8" text-anchor="middle">永远保留 · 32KB 上限</text>
+
+        <rect x="590" y="212" width="175" height="42" rx="4" fill="rgba(76, 29, 149, 0.3)" stroke="#a78bfa" stroke-width="1"/>
+        <text x="677" y="230" fill="#a78bfa" font-size="9" font-weight="600" text-anchor="middle">[user] Memories</text>
+        <text x="677" y="244" fill="#94a3b8" font-size="8" text-anchor="middle">最多 20 条 · 按类别分组</text>
+
+        <rect x="590" y="264" width="175" height="42" rx="4" fill="rgba(30, 41, 59, 0.4)" stroke="#94a3b8" stroke-width="1"/>
+        <text x="677" y="282" fill="#94a3b8" font-size="9" font-weight="600" text-anchor="middle">[user] Environment</text>
+        <text x="677" y="296" fill="#94a3b8" font-size="8" text-anchor="middle">首次完整 / 后续 delta</text>
+
+        <rect x="590" y="316" width="175" height="42" rx="4" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1"/>
+        <text x="677" y="334" fill="#fbbf24" font-size="9" font-weight="600" text-anchor="middle">[user] 用户任务</text>
+        <text x="677" y="348" fill="#94a3b8" font-size="8" text-anchor="middle">当前 turn 的输入</text>
+
+        <rect x="590" y="370" width="175" height="72" rx="4" fill="rgba(6, 78, 59, 0.15)" stroke="#34d399" stroke-width="1" stroke-dasharray="4,4"/>
+        <text x="677" y="392" fill="#94a3b8" font-size="9" font-weight="600" text-anchor="middle">对话历史</text>
+        <text x="677" y="408" fill="#94a3b8" font-size="8" text-anchor="middle">assistant + tool_call</text>
+        <text x="677" y="422" fill="#94a3b8" font-size="8" text-anchor="middle">+ tool_result × N 轮</text>
+
+        <!-- Compression indicator -->
+        <rect x="590" y="455" width="175" height="35" rx="4" fill="rgba(251, 191, 36, 0.1)" stroke="#fbbf24" stroke-width="1" stroke-dasharray="4,4"/>
+        <text x="677" y="472" fill="#fbbf24" font-size="8" font-weight="600" text-anchor="middle">⚠ 超 80K token → 压缩历史</text>
+        <text x="677" y="484" fill="#94a3b8" font-size="7" text-anchor="middle">LLM 摘要 + 保留最近 20K</text>
+
+        <!-- Separator line -->
+        <line x1="590" y1="510" x2="765" y2="510" stroke="#1e293b" stroke-width="1"/>
+        <text x="677" y="528" fill="#475569" font-size="8" text-anchor="middle">↑ 初始上下文（不压缩）| 对话历史（可压缩）</text>
+
+        <!-- Cost labels -->
+        <text x="677" y="565" fill="#94a3b8" font-size="9" font-weight="600" text-anchor="middle">组装后一次性发送</text>
+        <text x="677" y="580" fill="#94a3b8" font-size="8" text-anchor="middle">→ GLM-5 / GPT-4 / Claude</text>
+
+        <!-- EXTERNAL: LLM API -->
+        <rect x="835" y="260" width="100" height="70" rx="6" fill="#0f172a" stroke-width="0"/>
+        <rect x="835" y="260" width="100" height="70" rx="6" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="885" y="290" fill="white" font-size="11" font-weight="600" text-anchor="middle">LLM API</text>
+        <text x="885" y="306" fill="#fbbf24" font-size="8" text-anchor="middle">chatStream()</text>
+        <text x="885" y="320" fill="#94a3b8" font-size="7" text-anchor="middle">SSE Streaming</text>
+
+        <!-- Legend -->
+        <text x="50" y="660" fill="white" font-size="10" font-weight="600">Legend</text>
+
+        <rect x="50" y="672" width="14" height="9" rx="2" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1"/>
+        <text x="70" y="680" fill="#94a3b8" font-size="8">System (不压缩)</text>
+
+        <rect x="180" y="672" width="14" height="9" rx="2" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1"/>
+        <text x="200" y="680" fill="#94a3b8" font-size="8">Project Context</text>
+
+        <rect x="310" y="672" width="14" height="9" rx="2" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1"/>
+        <text x="330" y="680" fill="#94a3b8" font-size="8">Memories</text>
+
+        <rect x="420" y="672" width="14" height="9" rx="2" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1"/>
+        <text x="440" y="680" fill="#94a3b8" font-size="8">External API</text>
+
+        <rect x="540" y="672" width="14" height="9" rx="2" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1"/>
+        <text x="560" y="680" fill="#94a3b8" font-size="8">Runtime</text>
+
+        <text x="50" y="700" fill="#475569" font-size="8">buildInitialMessages() → 按 system → project → skills → memories → env → user 顺序组装</text>
+
+      </svg>
+    </div>
+
+    <p class="footer">
+      Context Pipeline &middot; Chitu (赤兔) &middot; 6 层上下文按优先级注入 LLM
+    </p>
+  </div>
+</body>
+</html>

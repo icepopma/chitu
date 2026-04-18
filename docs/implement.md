@@ -54,6 +54,27 @@ milestone_plan complete M<N> → 标记完成（自动 git commit）
 - 换一个不同的方法重试
 - 如果重试 3 次仍然失败，用 `milestone_plan fail` 标记并继续下一个
 
+### 8. 优先级说明
+- plans.md 中的 milestone 已经按优先级排好
+- P0（基础设施）> P1（可观测性）> P2（平台支持）> P3（生态）> P4（多端）> P5（高级）> P6（远期）
+- 按顺序执行，不要跳过前面的 milestone 去做后面的
+
+### 9. 外部凭证处理（关键）
+- 如果 milestone 需要外部凭证（API Key、OAuth Client ID、JWT Secret），**不要停下来等用户提供**
+- 实现完整代码结构，用 `process.env.XXX` 占位，提供合理的默认值或启动时检查
+- 在 milestone notes 中记录用户需要配置哪些环境变量
+- 示例：M10（WebSocket 认证）需要 JWT Secret → 写 `process.env.JWT_SECRET || 'dev-secret-change-me'`，note 记录"生产环境需设置 JWT_SECRET"
+- npm 包安装失败（原生模块编译错误）时：尝试 3 次，如果仍失败，用 `milestone_plan fail` 标记并继续下一个
+- **永远不要因为缺少外部凭证而无限重试或停止整个流程**
+
+## 已完成 Milestone 参考
+
+### M1: LLM API 可靠性 ✅
+- `src/llm/client.ts` — `fetchWithRetry()` 3 次指数退避重试
+- `src/agent/loop.ts` — 5 次 LLM 重试循环 + 错误注入
+- `maxIterations` 增加到 10000
+- 自主运行模式：前端 `autoApprove` 参数 + 前端 Zap 图标切换
+
 ## 完成标准（全部满足才停止）
 
 - plans.md 中所有 milestones 都标记为 completed 或有合理理由标记为 failed

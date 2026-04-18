@@ -2,11 +2,11 @@
 
 ## 目标
 
-将赤兔（Chitu）从一个基础的 Agent 系统，升级为一个完整的、可用于演示和实际开发的自主编程 Agent。包含数据库存储、认证、监控、Git 集成、MCP 工具生态、CLI 界面、容器化等能力。
+将赤兔（Chitu）从一个基础的 Agent 系统，升级为一个完整的、可用于演示和实际开发的自主编程 Agent。包含配置管理、数据库存储、崩溃恢复、监控告警、Git 集成、文件监听、MCP 工具生态、认证、CLI 界面、容器化等能力。
 
 ## 核心目标（必须全部完成）
 
-1. **可靠性**：LLM 调用有重试和降级，服务能从崩溃中恢复
+1. **可靠性**：LLM 调用有重试和降级 ✅，服务能从崩溃中恢复
 2. **持久化**：数据从 JSON 文件迁移到 SQLite，支持复杂查询
 3. **安全性**：WebSocket 有认证，工具执行有沙盒
 4. **可观测性**：有监控面板、结构化日志、Prometheus 指标
@@ -26,6 +26,7 @@
 
 - **TypeScript + ESM**，import 路径用 `.js` 后缀
 - **LLM**: 只用 GLM-5 via 智谱AI，`ZHIPU_API_KEY` 环境变量
+- **数据库**: Neon serverless PostgreSQL，`NEON_DATABASE_URL` 环境变量
 - **不修改 `src/types.ts` 中的 AppEvent 类型**（对齐 Codex 协议）
 - **新工具必须用 Plugin 接口**（`src/tools/plugins/`）
 - **所有代码通过 `npx tsc --noEmit`** — 类型检查是硬性要求
@@ -35,15 +36,26 @@
 
 ## 技术栈
 
-- 后端：Node.js + TypeScript (ESM) + ws + better-sqlite3
+- 后端：Node.js + TypeScript (ESM) + ws + @neondatabase/serverless
 - 前端：React 19 + Vite 8 + TailwindCSS 4 + Zustand 5
 - LLM：GLM-5 via 智谱AI（function calling）
-- 数据：SQLite（threads、rollout_events、memories 表）
+- 数据：Neon serverless PostgreSQL（threads、rollout_events、memories 表）
 - 部署：Docker + GitHub Actions CI
+
+## 里程碑优先级
+
+**P0 基础设施（让赤兔稳定运行）**：M1 ✅ → M2（配置）→ M3（数据库）
+**P1 可观测性 + 安全（让赤兔可信赖）**：M4（Crash Recovery）→ M5（监控）→ M6（Git）
+**P2 平台支持**：M7（文件监听）→ M8（多 Shell）
+**P3 生态集成**：M9（MCP）→ M10（认证）
+**P4 多端接入**：M11（CLI）→ M12（沙盒）→ M13（Docker CI/CD）
+**P5 高级功能**：M14（Review）→ M15（监控增强）→ M16（多 Agent）
+**P6 远期目标**：M17（语义索引）→ M18（IDE）→ M19（用户系统）→ M20（计费）→ M21（多模态）
+**P7 收尾**：M22（Documentation）
 
 ## "Done When" 检查清单
 
-全部 M1-M20 里程碑完成，且满足以下条件：
+全部 M1-M22 里程碑完成，且满足以下条件：
 
 - [ ] `npx tsc --noEmit` 通过（0 errors，除 vitest 声明文件）
 - [ ] `npm test` 通过
@@ -51,7 +63,7 @@
 - [ ] `npm run dev` 启动后端 + `cd web-ui && npm run dev` 启动前端
 - [ ] 浏览器访问 localhost:3000 能创建对话、发送消息、收到回复
 - [ ] 监控面板 localhost:8080/dashboard 显示里程碑进度
-- [ ] 所有 20 个 milestones 在 plans.md 中标记为 completed
+- [ ] 所有 22 个 milestones 在 plans.md 中标记为 completed
 - [ ] README.md 和 CLAUDE.md 反映最终架构
 - [ ] docs/architecture.md 描述完整系统
 
