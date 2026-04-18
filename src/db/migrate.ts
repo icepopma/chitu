@@ -59,6 +59,23 @@ const MIGRATIONS = [
 			CREATE INDEX IF NOT EXISTS idx_threads_updated_at ON threads(updated_at);
 		`,
 	},
+	{
+		name: '005_create_active_turns',
+		sql: `
+			CREATE TABLE IF NOT EXISTS active_turns (
+				turn_id TEXT PRIMARY KEY,
+				thread_id TEXT NOT NULL,
+				status TEXT NOT NULL DEFAULT 'in_progress',
+				started_at BIGINT NOT NULL,
+				completed_at BIGINT,
+				env_snapshot JSONB,
+				created_at BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT,
+				FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE CASCADE
+			);
+			CREATE INDEX IF NOT EXISTS idx_active_turns_thread_id ON active_turns(thread_id);
+			CREATE INDEX IF NOT EXISTS idx_active_turns_status ON active_turns(status);
+		`,
+	},
 ]
 
 export async function runMigrations(): Promise<void> {

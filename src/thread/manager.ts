@@ -19,6 +19,8 @@ import { createToolRegistry } from '../tools/index.js'
 import { captureEnvSnapshot, diffEnvSnapshots, type EnvSnapshot, type EnvDiff } from '../utils/env-diff.js'
 import { MemoryExtractor } from '../memories/extractor.js'
 import { HookDispatcher } from '../hooks/dispatcher.js'
+import { recordTurnStart, recordTurnComplete, updateTurnEnvSnapshot, getLatestEnvSnapshot } from '../db/crash-recovery.js'
+import { isDbAvailable } from '../db/connection.js'
 
 /** 服务器运行状态 */
 export interface ServerStatus {
@@ -78,6 +80,19 @@ export class ThreadManager {
   constructor(dataDir?: string) {
     this.store = new ThreadStore(dataDir)
     this.recorder = new RolloutRecorder(dataDir ? `${dataDir}/../rollouts` : undefined)
+  }
+
+  /** M4: 从数据库恢复 envSnapshots（服务启动时调用） */
+  async recoverEnvSnapshots(threadIds?: string[]): Promise<void> {
+    if (!(await isDbAvailable())) return
+
+    const ids = threadIds ?? (await this.listThreads()).map(t => t.id)
+    for (const threadId of ids) {
+      const snapshot = await getLatestEnvSnapshot(threadId)
+      if (snapshot) {
+        this.envSnapshots.set(threadId, snapshot)
+      }
+    }
   }
 
   /** 设置 Hook 分发器 */
@@ -253,6 +268,9 @@ export class ThreadManager {
     }
     this.emit({ type: 'turn/started', turn, thread })
 
+    // M4: 持久化 turn 开始状态到数据库
+    recordTurnStart(turn.id, threadId).catch(() => {})
+
     // 2. 自动重命名：标题为默认值时用首条消息更新
     if (thread.title === '新对话' || thread.title === 'Untitled') {
       thread.title = userInput.length > 30 ? userInput.slice(0, 30) + '...' : userInput
@@ -302,6 +320,9 @@ export class ThreadManager {
       envDelta = diff ?? null
     }
     this.envSnapshots.set(threadId, currentEnv)
+
+    // M4: 持久化 envSnapshot 到数据库
+    updateTurnEnvSnapshot(threadId, currentEnv).catch(() => {})
 
     // 4. 运行 Agent Loop
     let agentResult: AgentResult
@@ -441,12 +462,17 @@ export class ThreadManager {
       })
       this.emit({ type: 'turn/completed', turn, thread })
       await this.store.save(thread)
+      recordTurnComplete(turn.id, 'failed').catch(() => {})
       throw err
     }
 
     // 5. 完成 Turn
     turn.status = options?.signal?.aborted ? 'interrupted' : 'completed'
     turn.completedAt = Date.now()
+
+    // M4: 持久化 turn 完成状态到数据库
+    const turnDbStatus = turn.status === 'interrupted' ? 'interrupted' as const : 'completed' as const
+    recordTurnComplete(turn.id, turnDbStatus).catch(() => {})
 
     thread.status = 'idle'
     thread.updatedAt = Date.now()

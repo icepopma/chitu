@@ -8,6 +8,7 @@ import { createAppServer } from './server/index.js'
 import { loadConfig, validateConfig, formatValidationErrors } from './config/index.js'
 import { runMigrations } from './db/migrate.js'
 import { isDbAvailable } from './db/connection.js'
+import { recoverInterruptedTurns } from './db/crash-recovery.js'
 
 const result = loadConfig()
 const errors = validateConfig(result.config)
@@ -49,8 +50,32 @@ if (process.env.NEON_DATABASE_URL) {
 	} else {
 		console.warn('[db] ⚠️ 数据库连接失败，将降级到文件存储')
 	}
+
+	// M4: Crash Recovery — 扫描未完成的 turn 并标记为 interrupted
+	console.log('[crash-recovery] 扫描未完成的 turn...')
+	try {
+		const interrupted = await recoverInterruptedTurns()
+		if (interrupted.length > 0) {
+			console.log(`[crash-recovery] ⚠️ 发现 ${interrupted.length} 个未完成的 turn，已标记为 interrupted:`)
+			for (const t of interrupted) {
+				console.log(`  turn=${t.turnId.slice(0, 8)}... thread=${t.threadId.slice(0, 8)}... started=${new Date(t.startedAt).toISOString()}`)
+			}
+		} else {
+			console.log('[crash-recovery] ✅ 无未完成的 turn')
+		}
+	} catch (err: any) {
+		console.warn(`[crash-recovery] ⚠️ 恢复失败（非致命）: ${err.message}`)
+	}
 } else {
 	console.log('[db] NEON_DATABASE_URL 未配置，使用文件存储')
 }
 
 createAppServer({ port: result.config.server.port, dataDir: result.config.server.dataDir })
+const { manager } = createAppServer({ port: result.config.server.port, dataDir: result.config.server.dataDir })
+
+// M4: 启动后恢复 envSnapshots（异步，不阻塞启动）
+manager.recoverEnvSnapshots().then(() => {
+	console.log('[crash-recovery] ✅ envSnapshots 已从数据库恢复')
+}).catch((err: any) => {
+	console.warn(`[crash-recovery] ⚠️ envSnapshots 恢复失败（非致命）: ${err.message}`)
+})

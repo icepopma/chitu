@@ -4,7 +4,7 @@
 - [x] M1: LLM API 可靠性（重试 + 降级）
 - [x] M2: 分层配置系统
 - [x] M3: 数据库存储（Neon PostgreSQL 替代 JSON 文件）
-- [ ] M4: 服务端状态持久化（Crash Recovery）
+- [x] M4: 服务端状态持久化（Crash Recovery）
 - [ ] M5: 监控 + 告警（Prometheus + 结构化日志）
 - [ ] M6: Git 深度集成
 - [ ] M7: 文件监听（File Watcher）
@@ -89,7 +89,15 @@
   - envSnapshots 持久化到数据库
   - `npx tsc --noEmit` 通过
 - **Verification Commands**: `npx tsc --noEmit`
-- **Status**: pending
+- **Status**: completed
+- **Started**: 1776531447521
+- **Completed**: 1776531841703
+
+### Decisions
+- Crash Recovery 采用独立模块 src/db/crash-recovery.ts，提供 recordTurnStart/recordTurnComplete/updateTurnEnvSnapshot/recoverInterruptedTurns/getLatestEnvSnapshot 五个函数。ThreadManager 通过 async fire-and-forget 调用（.catch(() => {})），不阻塞主流程。active_turns 表使用 ON CONFLICT DO UPDATE 支持幂等写入。
+
+### Notes
+- 新增文件：src/db/crash-recovery.ts（Crash Recovery 模块）。修改文件：src/db/migrate.ts（005_create_active_turns 迁移）、src/thread/manager.ts（集成 turn 状态追踪 + envSnapshot 持久化 + recoverEnvSnapshots 方法）、src/start-server.ts（启动时 crash recovery + envSnapshot 恢复）。
 
 ## M5: 监控 + 告警（Prometheus + 结构化日志）
 - **Scope**: Prometheus metrics（turn 耗时、token 消耗、API 错误率、活跃连接数）。结构化日志（JSON 格式 + request ID 关联）。`/health` 和 `/metrics` HTTP endpoint。参考 Codex `codex-rs/otel/`。
