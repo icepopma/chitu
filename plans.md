@@ -19,6 +19,7 @@
 - [ ] M16: 用户系统 + 组织 + 权限
 - [ ] M17: 用量追踪 + 计费
 - [ ] M18: 多模态支持
+- [ ] M19: Documentation + Final Verification
 
 ## M1: LLM API 可靠性（重试 + 降级）
 - **Scope**: 在 `src/llm/client.ts` 中新增 `chatWithRetry()` 方法，实现指数退避重试（3 次，1s/2s/4s）。区分 429（限流）和 500（服务端）自动重试，400（客户端）不重试。可选 fallback model 配置。
@@ -218,4 +219,16 @@
   - Agent 能理解图片内容
   - `npx tsc --noEmit` 通过
 - **Verification Commands**: `npx tsc --noEmit`
+- **Status**: pending
+
+## M19: Documentation + Final Verification
+- **Scope**: 所有里程碑完成后的最终文档更新。更新 README.md 反映完整功能集。更新 CLAUDE.md 反映新架构（数据库、配置、认证、MCP 等）。写 docs/architecture.md 描述完整系统架构（数据模型、Agent Loop、工具插件、事件协议、MCP、认证）。确保所有 npm scripts 可用且通过验证。参考 Design Desk Milestone 24。
+- **Key Files**: `README.md`, `CLAUDE.md`, `docs/architecture.md`
+- **Acceptance Criteria**:
+  - README.md 反映完整的安装、使用、开发流程
+  - CLAUDE.md 包含所有新模块的架构说明
+  - docs/architecture.md 描述完整的系统架构
+  - `npm run build`、`npm test`、`npx tsc --noEmit` 全部通过
+  - `npm run dev` 一键启动完整服务
+- **Verification Commands**: `npm run build`, `npm test`, `npx tsc --noEmit`
 - **Status**: pending

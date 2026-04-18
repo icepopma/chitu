@@ -260,6 +260,8 @@ As you work through each milestone, document your progress so the user can follo
 - Log decisions WHEN you make them, not after — this keeps plans.md as a live document
 - The user reads plans.md to understand what happened, so write notes for humans not just for yourself
 
+After ALL milestones are completed, perform a final documentation pass: update README.md, CLAUDE.md, and architecture docs to reflect the full system. This is the "document" phase of the prompt→plan→implement→document workflow.
+
 # Presenting your work
 
 Your final message should read naturally, like an update from a concise teammate. For casual conversation or quick questions, respond in a friendly, conversational tone.
