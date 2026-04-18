@@ -59,6 +59,14 @@ export function formatMilestoneForContext(milestone: Milestone): string {
     lines.push(`- **Verification Commands**: ${milestone.verificationCommands.map(c => '`' + c + '`').join(', ')}`)
   }
 
+  if (milestone.decisionLog.length > 0) {
+    lines.push(``)
+    lines.push(`### Decisions`)
+    for (const d of milestone.decisionLog) {
+      lines.push(`- ${d}`)
+    }
+  }
+
   return lines.join('\n')
 }
 
@@ -78,6 +86,8 @@ function parsePlansMd(content: string): MilestonePlan {
     let acceptanceCriteria: string[] = []
     let verificationCommands: string[] = []
     let status: MilestoneStatus = 'pending'
+    let notes: string[] = []
+    let decisionLog: string[] = []
 
     const scopeMatch = section.match(/\*\*Scope\*\*:\s*(.+)/)
     if (scopeMatch) scope = scopeMatch[1].trim()
@@ -100,7 +110,17 @@ function parsePlansMd(content: string): MilestonePlan {
     const statusMatch = section.match(/\*\*Status\*\*:\s*(pending|in_progress|completed|failed)/)
     if (statusMatch) status = statusMatch[1] as MilestoneStatus
 
-    milestones.push({ id, title, scope, keyFiles, acceptanceCriteria, verificationCommands, status })
+    const notesMatch = section.match(/### Notes\n((?:- .+\n?)+)/)
+    if (notesMatch) {
+      notes = notesMatch[1].match(/- (.+)/g)?.map(s => s.replace(/^-\s*/, '')) ?? []
+    }
+
+    const decisionsMatch = section.match(/### Decisions\n((?:- .+\n?)+)/)
+    if (decisionsMatch) {
+      decisionLog = decisionsMatch[1].match(/- (.+)/g)?.map(s => s.replace(/^-\s*/, '')) ?? []
+    }
+
+    milestones.push({ id, title, scope, keyFiles, acceptanceCriteria, verificationCommands, status, notes, decisionLog })
   }
 
   return { version: 1, milestones, lastUpdated: Date.now() }
@@ -140,6 +160,23 @@ function serializePlansMd(plan: MilestonePlan): string {
     }
 
     lines.push(`- **Status**: ${m.status}`)
+
+    if (m.decisionLog.length > 0) {
+      lines.push('')
+      lines.push(`### Decisions`)
+      for (const d of m.decisionLog) {
+        lines.push(`- ${d}`)
+      }
+    }
+
+    if (m.notes.length > 0) {
+      lines.push('')
+      lines.push(`### Notes`)
+      for (const n of m.notes) {
+        lines.push(`- ${n}`)
+      }
+    }
+
     lines.push('')
   }
 

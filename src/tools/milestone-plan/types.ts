@@ -8,6 +8,8 @@ export interface Milestone {
   acceptanceCriteria: string[]
   verificationCommands: string[]
   status: MilestoneStatus
+  notes: string[]
+  decisionLog: string[]
 }
 
 export interface MilestonePlan {
