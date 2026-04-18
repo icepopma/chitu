@@ -6,6 +6,8 @@
 import 'dotenv/config'
 import { createAppServer } from './server/index.js'
 import { loadConfig, validateConfig, formatValidationErrors } from './config/index.js'
+import { runMigrations } from './db/migrate.js'
+import { isDbAvailable } from './db/connection.js'
 
 const result = loadConfig()
 const errors = validateConfig(result.config)
@@ -31,6 +33,24 @@ for (const [path, source] of Object.entries(result.sources)) {
 	if (source !== 'default') {
 		console.log(`  ${path} ← ${source}`)
 	}
+}
+
+// M3: 自动运行数据库迁移（如果 NEON_DATABASE_URL 配置了）
+if (process.env.NEON_DATABASE_URL) {
+	const dbOk = await isDbAvailable()
+	if (dbOk) {
+		console.log('[db] Neon PostgreSQL 可用，运行迁移...')
+		try {
+			await runMigrations()
+			console.log('[db] ✅ 迁移完成')
+		} catch (err: any) {
+			console.warn(`[db] ⚠️ 迁移失败，将降级到文件存储: ${err.message}`)
+		}
+	} else {
+		console.warn('[db] ⚠️ 数据库连接失败，将降级到文件存储')
+	}
+} else {
+	console.log('[db] NEON_DATABASE_URL 未配置，使用文件存储')
 }
 
 createAppServer({ port: result.config.server.port, dataDir: result.config.server.dataDir })

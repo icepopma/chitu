@@ -10,7 +10,8 @@
 
 ### 里程碑进度
 - M1: ✅ 已完成（LLM API 可靠性）
-- M2-M22: pending（待实现）
+- M2: ✅ 已完成（分层配置系统）
+- M3: ✅ 已完成（Neon PostgreSQL 数据库存储）
 
 ### 优先级分组
 | 优先级 | 范围 | Milestones |
@@ -39,6 +40,7 @@
 - LLM API 可靠性（3 次 HTTP 重试 + 5 次 Agent Loop 重试 + 错误注入）
 - 自主运行模式（autoApprove + 前端 Zap 图标）
 - System Prompt 对齐 Codex gpt_5_1_prompt.md（11 节结构）
+- **Neon PostgreSQL 数据库存储**（M3）— ThreadStore + MemoryStorage 双写策略（PG 主 + JSON 备份），启动时自动迁移
 
 ## 本地启动
 
@@ -50,6 +52,9 @@ npm run dev
 # 生产模式
 npx tsx src/start-server.ts
 ```
+
+### 环境变量
+- `NEON_DATABASE_URL` — Neon PostgreSQL 连接串（可选，未配置时自动降级到文件存储）
 
 ### 前端
 ```bash
@@ -77,12 +82,13 @@ src/
   context.ts    — AGENTS.md 层级加载 + 环境上下文
   hooks/        — 5 个事件点的 Shell Hook 分发器
   llm/          — GLM-5 API 客户端（SSE streaming + 重试）
-  memories/     — 跨 session 知识提取和注入
+  memories/     — 跨 session 知识提取和注入（Neon PostgreSQL 主 + JSON 备份）
   rollout/      — JSONL 事件记录（审计/调试回放）
   server/       — WebSocket 传输 + JSON-RPC + HTTP endpoints
   skills/       — Skills 加载系统
-  thread/       — ThreadManager + ThreadStore（JSON 文件，M3 迁移到 Neon PostgreSQL）
+  thread/       — ThreadManager + ThreadStore（Neon PostgreSQL 主 + JSON 备份）
   tools/        — 工具系统：PluginLoader + 多个 Plugin
+  db/           — 数据库连接 + 迁移（Neon PostgreSQL）
   types.ts      — 核心类型（Thread/Turn/Item/AppEvent）
 web-ui/         — React 19 + Vite 8 前端（Discord 风格）
 docs/           — prompt.md + implement.md + documentation.md + 架构文档
@@ -104,8 +110,7 @@ Transport (WebSocket/JSON-RPC)
 
 ## 已知问题 / 后续
 
-- 数据存储还是 JSON 文件，需迁移到 Neon PostgreSQL（M3）
-- 无分层配置系统（M2）
+- ~~数据存储还是 JSON 文件，需迁移到 Neon PostgreSQL（M3）~~ ✅ 已完成
 - WebSocket 无认证（M10）
 - exec 工具无沙盒隔离（M12）
 - 无 CI/CD（M13）
@@ -119,6 +124,7 @@ Transport (WebSocket/JSON-RPC)
 
 ## 变更日志
 
+- 2026-04-18: M3 完成 — ThreadStore 和 MemoryStorage 迁移到 Neon PostgreSQL，保留 JSON 文件作为备份。启动时自动运行迁移。双写策略确保可靠性。
 - 2026-04-18: 数据库从 SQLite 改为 Neon serverless PostgreSQL
 - 2026-04-18: 重新排序 milestones（22 个），新增 M7 文件监听、M8 多 Shell 支持。将 PROGRESS.md 未完成任务合并。M1 标记为 completed。
 - 2026-04-18: 创建 documentation.md，记录项目初始状态

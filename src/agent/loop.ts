@@ -540,7 +540,7 @@ export async function runAgentLoop(
   // 3. 构建初始上下文（对齐 Codex build_initial_context）
   // v14.3: 记忆预加载一次，不每次迭代都读文件
   const memoryStorage = new MemoryStorage()
-  const allMemories = memoryStorage.load()
+  const allMemories = await memoryStorage.loadAsync()
   const memoryText = allMemories.length > 0 ? memoryStorage.formatForInjection(allMemories) : null
   // v16: 里程碑上下文预加载
   const milestoneText = loadMilestoneContextText()

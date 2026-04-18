@@ -3,7 +3,7 @@
 ## Verification Checklist
 - [x] M1: LLM API 可靠性（重试 + 降级）
 - [x] M2: 分层配置系统
-- [ ] M3: 数据库存储（Neon PostgreSQL 替代 JSON 文件）
+- [x] M3: 数据库存储（Neon PostgreSQL 替代 JSON 文件）
 - [ ] M4: 服务端状态持久化（Crash Recovery）
 - [ ] M5: 监控 + 告警（Prometheus + 结构化日志）
 - [ ] M6: Git 深度集成
@@ -69,7 +69,15 @@
   - `NEON_DATABASE_URL` 环境变量配置
   - `npx tsc --noEmit` 通过
 - **Verification Commands**: `npx tsc --noEmit`, `npm test`
-- **Status**: pending
+- **Status**: completed
+- **Started**: 1776530539752
+- **Completed**: 1776531439849
+
+### Decisions
+- 采用双写策略（PostgreSQL 主 + JSON 文件备份）：1) 保证数据可靠性，数据库不可用时自动降级到文件存储；2) JSON 文件保持向后兼容，方便本地开发和调试；3) MemoryStorage 的 load() 保持同步接口兼容性（降级到文件），新增 loadAsync() 优先从数据库读取
+
+### Notes
+- 修改文件清单：src/thread/store.ts（重写为 PG+JSON 双写）、src/memories/storage.ts（重写为 PG+JSON 双写）、src/agent/loop.ts（load → loadAsync）、src/start-server.ts（启动自动迁移）、tsconfig.json（排除 .test.ts 文件）。用户需要配置 NEON_DATABASE_URL 环境变量，未配置时自动降级到文件存储。
 
 ## M4: 服务端状态持久化（Crash Recovery）
 - **Scope**: Turn 开始时写入 PostgreSQL 的 `active_turns` 表，Turn 完成/失败时标记完成。服务启动时扫描未完成的 turn 标记为 `interrupted`。envSnapshots 持久化到数据库。参考 Codex `codex-rs/core/src/state/session.rs`。
