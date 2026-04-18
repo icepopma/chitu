@@ -13,10 +13,13 @@
 
 import { WebSocketServer, type WebSocket } from 'ws'
 import { createServer } from 'http'
+import { readFileSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
 import { ThreadManager } from '../thread/manager.js'
 import { MessageProcessor } from './message-processor.js'
 import { HookDispatcher } from '../hooks/dispatcher.js'
 import { parseMessage, createError, PARSE_ERROR } from './json-rpc.js'
+import { loadMilestonePlan } from '../tools/milestone-plan/parser.js'
 
 export interface AppServerOptions {
   port?: number
@@ -29,14 +32,27 @@ export function createAppServer(options?: AppServerOptions) {
   manager.setHookDispatcher(new HookDispatcher())
   const processor = new MessageProcessor(manager)
 
-  // HTTP server for /status endpoint + WebSocket upgrade
+  // HTTP server for /status, /dashboard endpoints + WebSocket upgrade
+  const projectRoot = process.cwd()
   const httpServer = createServer((req, res) => {
+    // CORS headers for dashboard access from frontend dev server
+    res.setHeader('Access-Control-Allow-Origin', '*')
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204)
+      res.end()
+      return
+    }
+
     if (req.url?.startsWith('/status')) {
       res.writeHead(200, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify(manager.getStatus(), null, 2))
+    } else if (req.url?.startsWith('/dashboard')) {
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify(buildDashboardData(manager, projectRoot), null, 2))
     } else {
       res.writeHead(426, { 'Content-Type': 'text/plain' })
-      res.end('Upgrade Required. Use WebSocket or /status endpoint.')
+      res.end('Upgrade Required. Use WebSocket or /status /dashboard endpoint.')
     }
   })
 
@@ -77,6 +93,69 @@ export function createAppServer(options?: AppServerOptions) {
   console.log(`   数据目录: ${options?.dataDir || './chitu-data/threads'}\n`)
 
   return { wss, httpServer, manager, processor }
+}
+
+/** 聚合 dashboard 数据 */
+function buildDashboardData(manager: ThreadManager, projectRoot: string) {
+  const status = manager.getStatus()
+
+  // 里程碑进度
+  const plan = loadMilestonePlan(projectRoot)
+  const milestones = plan ? plan.milestones.map(m => ({
+    id: m.id,
+    title: m.title,
+    status: m.status,
+    scope: m.scope,
+    keyFiles: m.keyFiles,
+    acceptanceCriteria: m.acceptanceCriteria,
+    verificationCommands: m.verificationCommands,
+    notesCount: m.notes.length,
+    decisionsCount: m.decisionLog.length,
+    recentNotes: m.notes.slice(-3),
+    recentDecisions: m.decisionLog.slice(-3),
+  })) : []
+
+  const completedCount = milestones.filter(m => m.status === 'completed').length
+  const totalCount = milestones.length
+
+  // 最近的 rollout events
+  const recentEvents = loadRecentRolloutEvents(projectRoot, 20)
+
+  return {
+    status,
+    milestones: {
+      total: totalCount,
+      completed: completedCount,
+      inProgress: milestones.filter(m => m.status === 'in_progress').length,
+      pending: milestones.filter(m => m.status === 'pending').length,
+      failed: milestones.filter(m => m.status === 'failed').length,
+      progressPct: totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0,
+      items: milestones,
+    },
+    recentEvents,
+    timestamp: Date.now(),
+  }
+}
+
+/** 读取最近 N 条 rollout events */
+function loadRecentRolloutEvents(projectRoot: string, limit: number): Array<{ type: string; timestamp: string; data: any }> {
+  const rolloutDir = join(projectRoot, 'chitu-data', 'rollouts')
+  try {
+    const files = readdirSync(rolloutDir).filter(f => f.endsWith('.jsonl')).sort().reverse()
+    const events: Array<{ type: string; timestamp: string; data: any }> = []
+    for (const file of files.slice(0, 5)) {
+      const content = readFileSync(join(rolloutDir, file), 'utf-8')
+      const lines = content.trim().split('\n').filter(Boolean)
+      for (const line of lines) {
+        try {
+          events.push(JSON.parse(line))
+        } catch { /* skip malformed */ }
+      }
+    }
+    return events.slice(-limit)
+  } catch {
+    return []
+  }
 }
 
 // 直接运行：npx tsx src/server/index.ts

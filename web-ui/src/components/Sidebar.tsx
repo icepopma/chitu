@@ -1,10 +1,10 @@
 import { useAppStore } from '../lib/store'
 import { useChituSocket } from '../hooks/useChituSocket'
-import { MessageSquare, Plus, Minus, Trash2, GitFork, Wifi, WifiOff } from 'lucide-react'
+import { MessageSquare, Plus, Minus, Trash2, GitFork, Wifi, WifiOff, Activity } from 'lucide-react'
 import { cn } from '../lib/utils'
 import { useState } from 'react'
 
-export function Sidebar() {
+export function Sidebar({ onShowDashboard }: { onShowDashboard?: () => void }) {
   const { threads, currentThreadId } = useAppStore()
   const { createThread, deleteThread, forkThread, resumeThread, connected } = useChituSocket()
   const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -26,7 +26,16 @@ export function Sidebar() {
       {/* Header */}
       <div className="h-12 flex items-center px-4 border-b border-[#2a2a2a] shrink-0">
         <span className="text-base font-semibold text-white">🐰 赤兔</span>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          {onShowDashboard && (
+            <button
+              onClick={onShowDashboard}
+              className="text-[#888] hover:text-[#5865f2] transition-colors"
+              title="监控面板"
+            >
+              <Activity className="w-4 h-4" />
+            </button>
+          )}
           {connected ? (
             <Wifi className="w-4 h-4 text-[#43b581]" />
           ) : (
