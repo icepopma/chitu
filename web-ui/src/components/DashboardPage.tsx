@@ -30,7 +30,15 @@ interface DashboardData {
       decisionsCount: number
       recentNotes: string[]
       recentDecisions: string[]
+      startedAt?: number
+      completedAt?: number
+      durationMs?: number
     }>
+  }
+  timing?: {
+    taskStartedAt?: number
+    taskDurationMs?: number
+    hasActive: boolean
   }
   recentEvents: Array<{ type: string; timestamp: string; data: any }>
   timestamp: number
@@ -153,7 +161,38 @@ function MetricsOverview({ data }: { data: DashboardData }) {
         <StatBlock value={status.totalTurns} label="Turns" icon={<MessageSquare className="w-4 h-4 text-[#5865f2]" />} />
         <StatBlock value={formatTokens(status.totalTokens)} label="Tokens" icon={<Hash className="w-4 h-4 text-[#43b581]" />} />
         <StatBlock value={status.totalIterations} label="迭代次数" icon={<RefreshCw className="w-4 h-4 text-[#faa61a]" />} />
-        <StatBlock value={formatUptime(status.uptime)} label="运行时长" icon={<Clock className="w-4 h-4 text-[#888]" />} />
+        <StatBlock value={formatUptime(status.uptime)} label="服务器时长" icon={<Clock className="w-4 h-4 text-[#888]" />} />
+      </div>
+    </Card>
+  )
+}
+
+function TaskTiming({ data }: { data: DashboardData }) {
+  const { timing } = data
+  if (!timing?.taskStartedAt) {
+    return (
+      <Card title="任务时长" icon={<Clock className="w-3.5 h-3.5 text-[#5865f2]" />}>
+        <div className="text-sm text-[#888] text-center py-4">尚未开始任务</div>
+      </Card>
+    )
+  }
+  return (
+    <Card title="任务时长" icon={<Clock className="w-3.5 h-3.5 text-[#5865f2]" />}>
+      <div className="space-y-2 text-sm">
+        <div className="flex justify-between">
+          <span className="text-[#888]">任务开始</span>
+          <span className="text-white text-xs">{new Date(timing.taskStartedAt).toLocaleString()}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-[#888]">已用时间</span>
+          <span className="text-white font-mono font-bold">{timing.taskDurationMs ? formatUptime(timing.taskDurationMs) : '—'}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-[#888]">状态</span>
+          <span className={timing.hasActive ? 'text-[#faa61a]' : 'text-[#43b581]'}>
+            {timing.hasActive ? '运行中...' : '已暂停'}
+          </span>
+        </div>
       </div>
     </Card>
   )
@@ -196,6 +235,9 @@ function MilestoneList({ data }: { data: DashboardData }) {
               <div className="flex items-center gap-2">
                 <span className="font-mono text-xs text-[#5865f2]">{m.id}</span>
                 <span className="text-sm text-white font-medium truncate">{m.title}</span>
+                {m.durationMs != null && (
+                  <span className="text-[11px] font-mono text-[#888] shrink-0">{formatUptime(m.durationMs)}</span>
+                )}
               </div>
               <p className="text-xs text-[#888] mt-0.5 line-clamp-2">{m.scope}</p>
               {(m.notesCount > 0 || m.decisionsCount > 0) && (
@@ -312,10 +354,11 @@ export function DashboardPage({ onBack }: { onBack: () => void }) {
 
         {data && (
           <div className="max-w-[1100px] mx-auto space-y-4">
-            {/* 第一行：服务器信息 + 运行指标 */}
-            <div className="grid grid-cols-2 gap-4">
+            {/* 第一行：服务器信息 + 运行指标 + 任务时长 */}
+            <div className="grid grid-cols-3 gap-4">
               <ServerInfo data={data} />
               <MetricsOverview data={data} />
+              <TaskTiming data={data} />
             </div>
 
             {/* 第二行：里程碑进度 */}

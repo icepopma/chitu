@@ -99,24 +99,40 @@ export function createAppServer(options?: AppServerOptions) {
 function buildDashboardData(manager: ThreadManager, projectRoot: string) {
   const status = manager.getStatus()
 
-  // 里程碑进度
+  // 里程碑进度（含任务时长）
   const plan = loadMilestonePlan(projectRoot)
-  const milestones = plan ? plan.milestones.map(m => ({
-    id: m.id,
-    title: m.title,
-    status: m.status,
-    scope: m.scope,
-    keyFiles: m.keyFiles,
-    acceptanceCriteria: m.acceptanceCriteria,
-    verificationCommands: m.verificationCommands,
-    notesCount: m.notes.length,
-    decisionsCount: m.decisionLog.length,
-    recentNotes: m.notes.slice(-3),
-    recentDecisions: m.decisionLog.slice(-3),
-  })) : []
+  const now = Date.now()
+  const milestones = plan ? plan.milestones.map(m => {
+    const durationMs = m.status === 'in_progress' && m.startedAt
+      ? now - m.startedAt
+      : (m.completedAt && m.startedAt ? m.completedAt - m.startedAt : undefined)
+    return {
+      id: m.id,
+      title: m.title,
+      status: m.status,
+      scope: m.scope,
+      keyFiles: m.keyFiles,
+      acceptanceCriteria: m.acceptanceCriteria,
+      verificationCommands: m.verificationCommands,
+      notesCount: m.notes.length,
+      decisionsCount: m.decisionLog.length,
+      recentNotes: m.notes.slice(-3),
+      recentDecisions: m.decisionLog.slice(-3),
+      startedAt: m.startedAt,
+      completedAt: m.completedAt,
+      durationMs,
+    }
+  }) : []
 
   const completedCount = milestones.filter(m => m.status === 'completed').length
   const totalCount = milestones.length
+
+  // 任务总时长：从第一个 milestone start 到最后一个 complete（或 now）
+  const startedMilestones = milestones.filter(m => m.startedAt)
+  const taskStartedAt = startedMilestones.length > 0 ? Math.min(...startedMilestones.map(m => m.startedAt!)) : undefined
+  const lastCompletedAt = milestones.filter(m => m.completedAt).length > 0 ? Math.max(...milestones.filter(m => m.completedAt).map(m => m.completedAt!)) : undefined
+  const hasActive = milestones.some(m => m.status === 'in_progress')
+  const taskDurationMs = taskStartedAt ? ((hasActive ? now : (lastCompletedAt || now)) - taskStartedAt) : undefined
 
   // 最近的 rollout events
   const recentEvents = loadRecentRolloutEvents(projectRoot, 20)
@@ -131,6 +147,11 @@ function buildDashboardData(manager: ThreadManager, projectRoot: string) {
       failed: milestones.filter(m => m.status === 'failed').length,
       progressPct: totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0,
       items: milestones,
+    },
+    timing: {
+      taskStartedAt,
+      taskDurationMs,
+      hasActive,
     },
     recentEvents,
     timestamp: Date.now(),

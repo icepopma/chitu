@@ -81,6 +81,7 @@ export const milestonePlanTool: Tool = {
           return { content: `Error: milestone "${active.id}" is already in_progress. Complete or fail it first.`, isError: true }
         }
         milestone.status = 'in_progress'
+        milestone.startedAt = Date.now()
         saveMilestonePlan(root, plan)
         return { content: `Started milestone ${milestoneId}: ${milestone.title}` }
       }
@@ -94,6 +95,7 @@ export const milestonePlanTool: Tool = {
           return { content: `Error: milestone "${milestoneId}" not found`, isError: true }
         }
         milestone.status = 'completed'
+        milestone.completedAt = Date.now()
         saveMilestonePlan(root, plan)
 
         try {
@@ -115,6 +117,7 @@ export const milestonePlanTool: Tool = {
           return { content: `Error: milestone "${milestoneId}" not found`, isError: true }
         }
         milestone.status = 'failed'
+        milestone.completedAt = Date.now()
         saveMilestonePlan(root, plan)
         const reason = args.explanation ? ` Reason: ${args.explanation}` : ''
         return { content: `Marked milestone ${milestoneId} as failed.${reason}` }

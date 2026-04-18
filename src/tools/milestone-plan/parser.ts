@@ -120,7 +120,14 @@ function parsePlansMd(content: string): MilestonePlan {
       decisionLog = decisionsMatch[1].match(/- (.+)/g)?.map(s => s.replace(/^-\s*/, '')) ?? []
     }
 
-    milestones.push({ id, title, scope, keyFiles, acceptanceCriteria, verificationCommands, status, notes, decisionLog })
+    let startedAt: number | undefined
+    let completedAt: number | undefined
+    const startedMatch = section.match(/\*\*Started\*\*:\s*(\d+)/)
+    if (startedMatch) startedAt = parseInt(startedMatch[1], 10)
+    const completedMatch = section.match(/\*\*Completed\*\*:\s*(\d+)/)
+    if (completedMatch) completedAt = parseInt(completedMatch[1], 10)
+
+    milestones.push({ id, title, scope, keyFiles, acceptanceCriteria, verificationCommands, status, notes, decisionLog, startedAt, completedAt })
   }
 
   return { version: 1, milestones, lastUpdated: Date.now() }
@@ -160,6 +167,9 @@ function serializePlansMd(plan: MilestonePlan): string {
     }
 
     lines.push(`- **Status**: ${m.status}`)
+
+    if (m.startedAt) lines.push(`- **Started**: ${m.startedAt}`)
+    if (m.completedAt) lines.push(`- **Completed**: ${m.completedAt}`)
 
     if (m.decisionLog.length > 0) {
       lines.push('')

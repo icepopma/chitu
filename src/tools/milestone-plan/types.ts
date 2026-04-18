@@ -10,6 +10,10 @@ export interface Milestone {
   status: MilestoneStatus
   notes: string[]
   decisionLog: string[]
+  /** timestamp when milestone was started (marked in_progress) */
+  startedAt?: number
+  /** timestamp when milestone was completed or failed */
+  completedAt?: number
 }
 
 export interface MilestonePlan {
