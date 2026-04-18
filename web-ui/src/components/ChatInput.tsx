@@ -1,10 +1,11 @@
 import { useState, useRef, useCallback } from 'react'
 import { useChituSocket } from '../hooks/useChituSocket'
 import { useAppStore } from '../lib/store'
-import { Send, Square } from 'lucide-react'
+import { Send, Square, Zap, ZapOff } from 'lucide-react'
 
 export function ChatInput() {
   const [input, setInput] = useState('')
+  const [autoMode, setAutoMode] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const { sendMessage, interruptTurn } = useChituSocket()
   const { currentThreadId, turnStatus } = useAppStore()
@@ -20,11 +21,11 @@ export function ChatInput() {
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
 
     try {
-      await sendMessage(msg)
+      await sendMessage(msg, autoMode || undefined)
     } catch (err: any) {
       console.error('发送失败:', err.message)
     }
-  }, [input, currentThreadId, sendMessage])
+  }, [input, currentThreadId, sendMessage, autoMode])
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -55,6 +56,14 @@ export function ChatInput() {
           rows={1}
           className="flex-1 bg-transparent text-white text-sm resize-none outline-none placeholder-[#888] disabled:opacity-50 max-h-[200px] py-1 px-2"
         />
+        {/* 自主运行开关 */}
+        <button
+          onClick={() => setAutoMode(!autoMode)}
+          className={`p-2 rounded transition-colors ${autoMode ? 'bg-[#faa61a] text-[#1a1a1a]' : 'text-[#888] hover:text-white hover:bg-[#3a3a3a]'}`}
+          title={autoMode ? '自主运行模式已开启（自动批准所有操作）' : '开启自主运行模式'}
+        >
+          {autoMode ? <Zap className="w-4 h-4" /> : <ZapOff className="w-4 h-4" />}
+        </button>
         {isRunning ? (
           <button
             onClick={interruptTurn}
@@ -74,6 +83,11 @@ export function ChatInput() {
           </button>
         )}
       </div>
+      {autoMode && (
+        <div className="text-[11px] text-[#faa61a] mt-1 px-1">
+          自主运行模式：所有工具操作将被自动批准，无需手动确认
+        </div>
+      )}
     </div>
   )
 }
