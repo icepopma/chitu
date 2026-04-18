@@ -85,6 +85,38 @@ export class LLMClient {
   }
 
   /**
+   * 带重试的 fetch — 指数退避（1s/2s/4s）
+   * 429（限流）和 5xx（服务端）自动重试，4xx（客户端）不重试
+   * 网络错误（DNS、连接超时、断网）也自动重试
+   */
+  private async fetchWithRetry(url: string, init: RequestInit, maxRetries = 3): Promise<Response> {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await fetch(url, init)
+        // 429 或 5xx → 重试
+        if ((response.status === 429 || response.status >= 500) && attempt < maxRetries) {
+          const delay = Math.pow(2, attempt) * 1000
+          console.warn(`[llm] ${response.status} on attempt ${attempt + 1}, retrying in ${delay}ms...`)
+          await new Promise(r => setTimeout(r, delay))
+          continue
+        }
+        return response
+      } catch (err: any) {
+        // 网络错误（ECONNREFUSED, ENOTFOUND, timeout, 断网）→ 重试
+        if (attempt < maxRetries) {
+          const delay = Math.pow(2, attempt) * 1000
+          console.warn(`[llm] network error on attempt ${attempt + 1}: ${err.message}, retrying in ${delay}ms...`)
+          await new Promise(r => setTimeout(r, delay))
+          continue
+        }
+        throw err
+      }
+    }
+    // unreachable but TypeScript needs it
+    throw new Error('Max retries exceeded')
+  }
+
+  /**
    * 调用 GLM-5（非流式）
    */
   async chat(messages: Message[], tools?: ToolDefinition[]): Promise<LLMResponse> {
@@ -161,7 +193,7 @@ export class LLMClient {
       body.tool_choice = 'auto'
     }
 
-    const response = await fetch(this.endpoint, {
+    const response = await this.fetchWithRetry(this.endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

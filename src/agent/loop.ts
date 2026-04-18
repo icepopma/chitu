@@ -521,7 +521,7 @@ export async function runAgentLoop(
     client,
     tools,
     systemPrompt,
-    maxIterations = parseInt(process.env.CHITU_MAX_ITERATIONS || '2000', 10),
+    maxIterations = parseInt(process.env.CHITU_MAX_ITERATIONS || '10000', 10),
     signal,
     onStep,
     onStreamDelta,
@@ -573,34 +573,61 @@ export async function runAgentLoop(
       messages.push(...compactResult.messages)
     }
 
-    // 4b. 调用 LLM（流式）
-    // 用 chatStream 逐 token 推送文本，同时累积完整响应
-    // 工具调用也通过流累积（arguments 是增量拼接的）
+    // 4b. 调用 LLM（流式）— 带容错：LLM 失败不终止整个 turn，等待后重试
+    let response: import('../llm/client.js').LLMResponse
     const streamingItemId = crypto.randomUUID()
-    const response = await client.chatStream(
-      messages,
-      (chunk: StreamChunk) => {
-        // 只对文本增量调用回调（工具调用在流中累积，不逐块回调）
-        if (chunk.delta && onStreamDelta) {
-          onStreamDelta(streamingItemId, chunk.delta)
+    const llmMaxRetries = 5
+    let llmSucceeded = false
+
+    for (let retry = 0; retry < llmMaxRetries; retry++) {
+      try {
+        response = await client.chatStream(
+          messages,
+          (chunk: StreamChunk) => {
+            if (chunk.delta && onStreamDelta) {
+              onStreamDelta(streamingItemId, chunk.delta)
+            }
+          },
+          toolDefinitions,
+        )
+        llmSucceeded = true
+        break
+      } catch (llmErr: any) {
+        console.error(`[agent] LLM call failed (attempt ${retry + 1}/${llmMaxRetries}): ${llmErr.message}`)
+        if (retry < llmMaxRetries - 1) {
+          const waitMs = Math.pow(2, retry) * 2000
+          console.warn(`[agent] waiting ${waitMs}ms before retry...`)
+          await new Promise(r => setTimeout(r, waitMs))
+        } else {
+          // 所有重试都失败 — 往 messages 里加错误提示，让下一轮迭代知道
+          console.error(`[agent] LLM call failed after ${llmMaxRetries} retries, adding error to context`)
+          messages.push({
+            role: 'user',
+            content: `[系统错误] LLM API 连续 ${llmMaxRetries} 次调用失败: ${llmErr.message}。如果是 API key 问题请停止并告知用户。如果是网络问题，请继续尝试。`,
+          })
         }
-      },
-      toolDefinitions,
-    )
-    totalTokens += response.usage.total_tokens
+      }
+    }
+
+    if (!llmSucceeded) {
+      // LLM 持续失败但 loop 继续（可能下一次迭代能恢复）
+      continue
+    }
+    const llmResponse = response!
+    totalTokens += llmResponse.usage.total_tokens
 
     // 4c. 如果没有工具调用 → 任务完成
-    if (!response.tool_calls || response.tool_calls.length === 0) {
+    if (!llmResponse.tool_calls || llmResponse.tool_calls.length === 0) {
       const step: AgentStep = {
         iteration: i + 1,
         messages,
-        content: response.content,
+        content: llmResponse.content,
         toolCalls: null,
       }
       onStep?.(step)
 
       return {
-        content: response.content || '(Agent 没有返回内容)',
+        content: llmResponse.content || '(Agent 没有返回内容)',
         iterations: i + 1,
         totalTokens,
         cancelled: false,
@@ -611,21 +638,21 @@ export async function runAgentLoop(
     const step: AgentStep = {
       iteration: i + 1,
       messages,
-      content: response.content,
-      toolCalls: response.tool_calls,
+      content: llmResponse.content,
+      toolCalls: llmResponse.tool_calls,
     }
 
     // 把 assistant 的 tool_call 消息加入历史
     messages.push({
       role: 'assistant',
-      content: response.content,
-      tool_calls: response.tool_calls,
+      content: llmResponse.content,
+      tool_calls: llmResponse.tool_calls,
     })
 
     // 逐个执行工具
     const toolResults: AgentStep['toolResults'] = []
 
-    for (const tc of response.tool_calls) {
+    for (const tc of llmResponse.tool_calls) {
       if (signal?.aborted) {
         return {
           content: '(任务被取消)',
