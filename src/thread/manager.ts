@@ -23,6 +23,7 @@ import { HookDispatcher } from '../hooks/dispatcher.js'
 import { recordTurnStart, recordTurnComplete, updateTurnEnvSnapshot, getLatestEnvSnapshot } from '../db/crash-recovery.js'
 import { isDbAvailable } from '../db/connection.js'
 import { chituMetrics } from '../monitoring/metrics.js'
+import type { FileChangeBuffer } from '../watcher/file-change-buffer.js'
 
 /** 服务器运行状态 */
 export interface ServerStatus {
@@ -73,6 +74,8 @@ export class ThreadManager {
   private envSnapshots = new Map<string, EnvSnapshot>()
   /** v14.4: Hook 分发器 */
   private hookDispatcher?: HookDispatcher
+  /** v17: 文件变更缓冲区 */
+  private fileChangeBuffer?: FileChangeBuffer
   /** v16: 运行状态追踪 */
   private startedAt = Date.now()
   private _totalTurns = 0
@@ -100,6 +103,11 @@ export class ThreadManager {
   /** 设置 Hook 分发器 */
   setHookDispatcher(dispatcher: HookDispatcher): void {
     this.hookDispatcher = dispatcher
+  }
+
+  /** M7: 设置文件变更缓冲区 */
+  setFileChangeBuffer(buffer: FileChangeBuffer): void {
+    this.fileChangeBuffer = buffer
   }
 
   /** 设置事件监听器（Message Processor 用这个接收事件） */
@@ -363,6 +371,7 @@ export class ThreadManager {
         onApprovalNeeded: options?.onApprovalNeeded,
         hookDispatcher: dispatcher,
         envDelta,
+        fileChangeBuffer: this.fileChangeBuffer,
         onStreamDelta: (itemId, delta) => {
           if (!streamingItemId) {
             streamingItemId = itemId

@@ -70,7 +70,6 @@ if (process.env.NEON_DATABASE_URL) {
 	console.log('[db] NEON_DATABASE_URL 未配置，使用文件存储')
 }
 
-createAppServer({ port: result.config.server.port, dataDir: result.config.server.dataDir })
 const { manager } = createAppServer({ port: result.config.server.port, dataDir: result.config.server.dataDir })
 
 // M4: 启动后恢复 envSnapshots（异步，不阻塞启动）

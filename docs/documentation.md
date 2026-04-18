@@ -15,7 +15,8 @@
 - M4: ✅ 已完成（Crash Recovery）
 - M5: ✅ 已完成（监控 + 告警）
 - M6: ✅ 已完成（Git 深度集成）
-- M7-M22: 待处理
+- M7: ✅ 已完成（文件监听）
+- M8-M22: 待处理
 
 ### 优先级分组
 | 优先级 | 范围 | Milestones |
@@ -58,6 +59,9 @@
 
 **Git 深度集成：**
 - **Git Plugin v2.0**（M6）— 8 个工具：4 个只读工具（git_status、git_diff、git_blame、git_log）+ 2 个写操作（git_checkpoint、git_rollback）+ 2 个 Ghost Commit 工具（ghost_commit、ghost_rollback）。Ghost Commit 使用 `git stash push -u` 创建临时快照，操作成功时 drop stash，失败时 pop stash 恢复。git_checkpoint 自动注入 `Co-authored-by: Chitu Agent <chitu@agent.local>` trailer。新增 `src/tools/git/` 目录下 6 个文件（status.ts、diff.ts、blame.ts、log.ts、ghost.ts、index.ts 重写）
+
+**文件监听：**
+- **File Watcher + Skills Hot-Reload**（M7）— 3 个新文件：`src/watcher/file-watcher.ts`（fs.watch recursive 监听项目文件变更，防抖 500ms，过滤 node_modules/.git/dist 等噪声目录），`src/watcher/skills-watcher.ts`（专门监听 `.agents/skills/` 目录变更，检测 SKILL.md 文件变化后全量重载 Skills），`src/watcher/file-change-buffer.ts`（生产者-消费者缓冲区，连接 FileWatcher 和 Agent Loop，100 事件上限防内存泄漏）。集成方式：server 启动时创建 FileWatcher + SkillsWatcher → ThreadManager 持有 FileChangeBuffer → Agent Loop 每轮循环开始时 flush buffer 并格式化为"文件变更通知"注入到上下文消息中。
 
 **配置与存储：**
 - **分层配置系统**（M2）— 4 层叠加：全局 `~/.chitu/config.json` → 项目 `.chitu/config.json` → 环境变量 → CLI 参数。后者覆盖前者。支持类型验证。7 个文件：types.ts（类型定义）、defaults.ts（默认值）、loader.ts（文件加载）、merge.ts（4 层合并）、env.ts（环境变量映射）、validate.ts（验证）、index.ts（入口 + 单例缓存）
@@ -116,6 +120,7 @@ src/
   skills/       — Skills 加载系统
   thread/       — ThreadManager + ThreadStore（PG 主 + JSON 备份）
   tools/        — 工具系统：PluginLoader + 多个 Plugin（exec, files, plan, milestone, git v2.0）
+  watcher/      — 文件监听：FileWatcher + SkillsWatcher + FileChangeBuffer
   types.ts      — 核心类型（Thread/Turn/Item/AppEvent）
 web-ui/         — React 19 + Vite 8 前端（Discord 风格）
 docs/           — prompt.md + implement.md + documentation.md + 架构文档
@@ -146,7 +151,7 @@ Transport (WebSocket/JSON-RPC)
 - exec 工具无沙盒隔离（M12）
 - 无 CI/CD（M13）
 - 监控面板指标不够丰富，需对标 Hermes HUD 增强（M15）
-- 无文件监听，Agent 无法感知外部变更（M7）
+- ~~无文件监听，Agent 无法感知外部变更（M7）~~ ✅ 已完成
 - 硬编码 `/bin/bash`，需多 Shell 支持（M8）
 
 ## 设计决策记录
@@ -170,6 +175,11 @@ Transport (WebSocket/JSON-RPC)
 - **决策**：Ghost Commit 用 `git stash` 而非 `git commit` 创建临时快照
 - **为什么**：stash 不污染 git history，pop/drop 操作是原子性的，适合临时快照场景。checkpoint 中的 Co-authored-by 使用 `--trailer` 参数注入（兼容旧版 git 有 fallback）
 - **Trade-off**：stash 不如 commit 完整（不含 index 状态细节），但对于 Agent 的"快照-执行-回滚"场景足够
+
+### M7: 文件监听
+- **决策**：FileChangeBuffer 作为 FileWatcher 和 Agent Loop 之间的解耦桥梁
+- **为什么**：FileWatcher 是事件驱动的（随时可能触发），Agent Loop 是轮询驱动的（每轮循环检查一次）。Buffer 解耦了两者的时间模型，flush 操作保证变更只被消费一次。100 事件上限防止内存泄漏。
+- **Trade-off**：如果 Agent Loop 运行时间长，中间的变更会累积在 buffer 中，全部注入可能导致上下文膨胀。但实际场景中外部变更频率不高，500ms 防抖也减少了事件数量。
 
 ## 变更日志
 

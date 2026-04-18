@@ -30,6 +30,8 @@ import type { HookDispatcher } from '../hooks/dispatcher.js'
 import { loadMilestoneContextText } from '../tools/milestone-plan/context.js'
 import { logger } from '../monitoring/logger.js'
 import { chituMetrics } from '../monitoring/metrics.js'
+import type { FileChangeBuffer } from '../watcher/file-change-buffer.js'
+import { formatFileChangeEvents } from '../watcher/file-change-buffer.js'
 
 // ===== 系统提示（对齐 Codex codex-rs/core/gpt_5_1_prompt.md） =====
 
@@ -372,6 +374,11 @@ export interface AgentLoopConfig {
    */
   hookDispatcher?: HookDispatcher
   /**
+   * v17: 文件变更缓冲区 — 监听项目文件外部变更
+   * Agent Loop 在每轮开始时从 buffer 取出 pending 变更，注入到上下文
+   */
+  fileChangeBuffer?: FileChangeBuffer
+  /**
    * v13.9: 环境差异 — 回合间只注入变化的字段
    * - undefined（默认）: 注入完整环境上下文
    * - EnvDiff: 只注入变化的字段
@@ -559,6 +566,16 @@ export async function runAgentLoop(
         iterations: i,
         totalTokens,
         cancelled: true,
+      }
+    }
+
+    // v17: 文件变更通知注入 — 如果有 pending 的外部文件变更，注入到上下文
+    if (config.fileChangeBuffer && config.fileChangeBuffer.hasEvents) {
+      const changeEvents = config.fileChangeBuffer.flush()
+      const changeText = formatFileChangeEvents(changeEvents)
+      if (changeText) {
+        messages.push({ role: 'user', content: changeText })
+        messages.push({ role: 'assistant', content: '收到文件变更通知，我会注意相关变化。' })
       }
     }
 

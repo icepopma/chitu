@@ -7,7 +7,7 @@
 - [x] M4: 服务端状态持久化（Crash Recovery）
 - [x] M5: 监控 + 告警（Prometheus + 结构化日志）
 - [x] M6: Git 深度集成
-- [ ] M7: 文件监听（File Watcher）
+- [x] M7: 文件监听（File Watcher）
 - [ ] M8: 多 Shell 支持
 - [ ] M9: MCP 集成（工具生态）
 - [ ] M10: WebSocket 认证（API Key + JWT）
@@ -146,7 +146,15 @@
   - Skills 目录变更触发热加载
   - `npx tsc --noEmit` 通过
 - **Verification Commands**: `npx tsc --noEmit`
-- **Status**: pending
+- **Status**: completed
+- **Started**: 1776533639693
+- **Completed**: 1776534681708
+
+### Decisions
+- 使用 FileChangeBuffer 作为 FileWatcher 和 Agent Loop 之间的桥梁。FileWatcher 收集变更事件 → 存入 buffer → Agent Loop 每轮循环开始时 flush 并注入到上下文。这个设计解耦了 watcher 和 agent loop，buffer 有 100 事件上限防止内存泄漏。
+
+### Notes
+- 新增文件：src/watcher/file-watcher.ts（已有，FileWatcher 使用 fs.watch recursive），src/watcher/skills-watcher.ts（SkillsWatcher 监听 .agents/skills/ 热加载），src/watcher/file-change-buffer.ts（FileChangeBuffer 生产者-消费者缓冲区），src/watcher/index.ts（模块入口）。集成点：src/server/index.ts 启动时创建 watcher，src/thread/manager.ts 通过 setFileChangeBuffer 注入，src/agent/loop.ts 每轮循环注入文件变更通知。
 
 ## M8: 多 Shell 支持
 - **Scope**: 自动检测用户 Shell（zsh/bash/sh），按类型派发不同参数。macOS 默认 zsh，Linux 默认 bash。替换硬编码的 `/bin/bash`。参考 Codex `codex-rs/core/src/shell.rs` + `shell_detect.rs`。

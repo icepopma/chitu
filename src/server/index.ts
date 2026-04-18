@@ -22,6 +22,7 @@ import { parseMessage, createError, PARSE_ERROR } from './json-rpc.js'
 import { loadMilestonePlan } from '../tools/milestone-plan/parser.js'
 import { chituMetrics } from '../monitoring/metrics.js'
 import { logger } from '../monitoring/logger.js'
+import { FileWatcher, FileChangeBuffer, SkillsWatcher } from '../watcher/index.js'
 
 export interface AppServerOptions {
   port?: number
@@ -105,7 +106,27 @@ export function createAppServer(options?: AppServerOptions) {
   console.log(`   Status:    http://localhost:${port}/status`)
   console.log(`   数据目录: ${options?.dataDir || './chitu-data/threads'}\n`)
 
-  return { wss, httpServer, manager, processor }
+  // M7: 文件监听 — FileWatcher + FileChangeBuffer + SkillsWatcher
+  const fileChangeBuffer = new FileChangeBuffer()
+
+  const fileWatcher = new FileWatcher({
+    rootDir: projectRoot,
+    onChange: (events) => fileChangeBuffer.push(events),
+  })
+  fileWatcher.start()
+
+  const skillsWatcher = new SkillsWatcher({
+    projectRoot,
+    onSkillsChanged: (skills) => {
+      logger.info('Skills hot-reloaded', { count: skills.length })
+    },
+  })
+  skillsWatcher.start()
+
+  // 注入到 ThreadManager，让 Agent Loop 能访问 buffer
+  manager.setFileChangeBuffer(fileChangeBuffer)
+
+  return { wss, httpServer, manager, processor, fileWatcher, skillsWatcher, fileChangeBuffer }
 }
 
 /** 聚合 dashboard 数据 */
@@ -185,7 +206,13 @@ function loadRecentRolloutEvents(projectRoot: string, limit: number): Array<{ ty
       const recentLines = lines.slice(-limit * 3)
       for (const line of recentLines) {
         try {
-          events.push(JSON.parse(line))
+          const raw = JSON.parse(line)
+          // 标准化字段名：rollout 里存的是 ts，前端期望 timestamp
+          events.push({
+            type: raw.type,
+            timestamp: raw.ts || raw.timestamp || 0,
+            data: raw.data,
+          })
         } catch { /* skip malformed */ }
       }
     }
