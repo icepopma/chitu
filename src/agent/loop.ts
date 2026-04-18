@@ -508,7 +508,7 @@ export async function runAgentLoop(
     client,
     tools,
     systemPrompt,
-    maxIterations = 2000,
+    maxIterations = parseInt(process.env.CHITU_MAX_ITERATIONS || '2000', 10),
     signal,
     onStep,
     onStreamDelta,
