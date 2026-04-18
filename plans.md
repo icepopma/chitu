@@ -10,7 +10,7 @@
 - [x] M7: 文件监听（File Watcher）
 - [x] M8: 多 Shell 支持
 - [x] M9: MCP 集成（工具生态）
-- [ ] M10: WebSocket 认证（API Key + JWT）
+- [x] M10: WebSocket 认证（API Key + JWT）
 - [ ] M11: CLI 模式（终端界面）
 - [ ] M12: 沙盒执行（容器隔离）
 - [ ] M13: Docker + CI/CD
@@ -204,7 +204,15 @@
   - 认证失败返回明确错误
   - `npx tsc --noEmit` 通过
 - **Verification Commands**: `npx tsc --noEmit`
-- **Status**: pending
+- **Status**: completed
+- **Started**: 1776534993099
+- **Completed**: 1776535070832
+
+### Decisions
+- 认证采用 verifyClient 回调在 WebSocket 握手阶段验证（ws 库原生支持），拒绝时返回 HTTP 401。JWT 实现不依赖外部库（jsonwebtoken），使用 Node.js 内置 crypto 的 HMAC-SHA256 验证签名，因为只需要基本的 HS256 验证。API Key 使用 timingSafeEqual 防止时序攻击。未配置 CHITU_API_KEY 和 CHITU_JWT_SECRET 时为开发模式（允许无认证连接）。
+
+### Notes
+- 新增 src/auth/index.ts（authenticateConnection + extractTokenFromRequest + verifyApiKey + verifyJwt）。修改 src/server/index.ts（import auth 模块，WebSocketServer 添加 verifyClient 回调）。环境变量：CHITU_API_KEY（API Key 认证）、CHITU_JWT_SECRET（JWT 认证）、CHITU_AUTH_DISABLED=true（禁用认证）。生产环境需设置 CHITU_API_KEY 或 CHITU_JWT_SECRET。
 
 ## M11: CLI 模式（终端界面）
 - **Scope**: 使用 `ink`（React for CLI）构建 TUI。通过 stdio JSON-RPC 与 App Server 通信。支持 `chitu` 命令直接启动。参考 Codex `codex-rs/tui/`。

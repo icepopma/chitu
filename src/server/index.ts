@@ -23,6 +23,7 @@ import { loadMilestonePlan } from '../tools/milestone-plan/parser.js'
 import { chituMetrics } from '../monitoring/metrics.js'
 import { logger } from '../monitoring/logger.js'
 import { FileWatcher, FileChangeBuffer, SkillsWatcher } from '../watcher/index.js'
+import { authenticateConnection, extractTokenFromRequest } from '../auth/index.js'
 
 export interface AppServerOptions {
   port?: number
@@ -65,7 +66,20 @@ export function createAppServer(options?: AppServerOptions) {
     }
   })
 
-  const wss = new WebSocketServer({ server: httpServer })
+  // M10: WebSocket 认证 — verifyClient 在握手阶段验证 token
+  const wss = new WebSocketServer({
+    server: httpServer,
+    verifyClient: (info, callback) => {
+      const token = extractTokenFromRequest(info.req)
+      const result = authenticateConnection(token)
+      if (!result.success) {
+        logger.warn('WebSocket auth rejected', { reason: result.reason })
+        callback(false, 401, result.reason || 'Unauthorized')
+      } else {
+        callback(true)
+      }
+    },
+  })
 
   wss.on('connection', (ws: WebSocket) => {
     logger.info('WebSocket client connected')
