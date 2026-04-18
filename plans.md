@@ -9,7 +9,7 @@
 - [x] M6: Git 深度集成
 - [x] M7: 文件监听（File Watcher）
 - [x] M8: 多 Shell 支持
-- [ ] M9: MCP 集成（工具生态）
+- [x] M9: MCP 集成（工具生态）
 - [ ] M10: WebSocket 认证（API Key + JWT）
 - [ ] M11: CLI 模式（终端界面）
 - [ ] M12: 沙盒执行（容器隔离）
@@ -184,7 +184,15 @@
   - MCP 工具的审批流程正常工作
   - `npx tsc --noEmit` 通过
 - **Verification Commands**: `npx tsc --noEmit`
-- **Status**: pending
+- **Status**: completed
+- **Started**: 1776534798914
+- **Completed**: 1776534973647
+
+### Decisions
+- MCP Client 采用 stdio 传输（子进程 stdin/stdout JSON-RPC 2.0），因为这是 MCP 最常用的传输方式且实现最简单。工具命名使用 `mcp__{server}__{tool}` 前缀避免命名冲突。审批策略默认 ask-user（安全优先），可配置 auto-approve。配置文件用 .chitu/mcp.json，项目级覆盖全局。
+
+### Notes
+- 新增 4 个文件：src/mcp/types.ts（MCP 类型定义）、src/mcp/client.ts（McpClient：stdio 连接 + JSON-RPC 2.0 + 工具发现/调用 + 转为赤兔 Tool）、src/mcp/loader.ts（从 .chitu/mcp.json 加载配置）、src/mcp/index.ts（模块入口）。修改 src/tools/index.ts（ToolRegistry 新增 loadMcpTools/disconnectMcp 方法，createToolRegistryAsync 集成 MCP 加载）。
 
 ## M10: WebSocket 认证（API Key + JWT）
 - **Scope**: WebSocket 握手时验证 `?token=xxx` 参数。支持 API Key 和 JWT Token 两种认证方式。参考 Codex `codex-rs/login/` 认证系统。

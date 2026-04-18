@@ -17,6 +17,9 @@
 import type { Tool, ToolResult } from './base.js'
 import { toolToDefinition } from './base.js'
 import { PluginLoader } from './plugin-loader.js'
+import { McpClient } from '../mcp/client.js'
+import type { McpServerConfig } from '../mcp/types.js'
+import { loadMcpConfig } from '../mcp/loader.js'
 
 // 导出核心类型（保持向后兼容）
 export type { Tool, ToolResult } from './base.js'
@@ -47,6 +50,8 @@ class ToolRegistry {
   private tools: Map<string, Tool> = new Map()
   /** 暴露 PluginLoader，让外部可以查询插件信息 */
   readonly pluginLoader: PluginLoader
+  /** MCP Client 实例列表 */
+  private mcpClients: McpClient[] = []
 
   constructor(pluginLoader: PluginLoader) {
     this.pluginLoader = pluginLoader
@@ -75,6 +80,48 @@ class ToolRegistry {
   toDefinitions() {
     return this.list().map(toolToDefinition)
   }
+
+  /**
+   * 加载 MCP 工具并注册到 Registry
+   *
+   * 流程：
+   * 1. 读取 MCP 配置（.chitu/mcp.json）
+   * 2. 为每个 Server 创建 McpClient 并连接
+   * 3. 发现工具并转为赤兔 Tool 格式注册
+   */
+  async loadMcpTools(projectRoot?: string): Promise<void> {
+    const configs = loadMcpConfig(projectRoot)
+
+    for (const config of configs) {
+      try {
+        const client = new McpClient(config)
+        await client.connect()
+
+        const tools = client.toChituTools()
+        for (const tool of tools) {
+          this.tools.set(tool.name, tool)
+        }
+
+        this.mcpClients.push(client)
+      } catch (err: any) {
+        // 单个 MCP Server 连接失败不影响其他
+        console.error(`[ToolRegistry] Failed to connect MCP server "${config.name}": ${err.message}`)
+      }
+    }
+  }
+
+  /** 断开所有 MCP 连接 */
+  async disconnectMcp(): Promise<void> {
+    for (const client of this.mcpClients) {
+      await client.disconnect()
+    }
+    this.mcpClients = []
+  }
+
+  /** 获取 MCP Client 列表（用于调试） */
+  getMcpClients(): McpClient[] {
+    return this.mcpClients
+  }
 }
 
 /**
@@ -101,12 +148,12 @@ export function createToolRegistry(): ToolRegistry {
 }
 
 /**
- * 异步版本 — 支持需要异步初始化的插件
+ * 异步版本 — 支持需要异步初始化的插件 + MCP 工具加载
  *
  * 会调用每个插件的 onLoad 钩子（如果有的话）。
- * 用于未来添加需要异步初始化的插件时。
+ * 然后加载 MCP 配置中定义的外部工具。
  */
-export async function createToolRegistryAsync(): Promise<ToolRegistry> {
+export async function createToolRegistryAsync(projectRoot?: string): Promise<ToolRegistry> {
   const loader = new PluginLoader()
 
   loader.register(execPlugin)
@@ -117,5 +164,14 @@ export async function createToolRegistryAsync(): Promise<ToolRegistry> {
 
   await loader.loadAll()
 
-  return new ToolRegistry(loader)
+  const registry = new ToolRegistry(loader)
+
+  // 加载 MCP 工具（非阻塞：失败不影响核心工具）
+  try {
+    await registry.loadMcpTools(projectRoot)
+  } catch (err: any) {
+    console.error(`[ToolRegistry] MCP loading failed: ${err.message}`)
+  }
+
+  return registry
 }
