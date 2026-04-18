@@ -14,7 +14,8 @@
 - M3: ✅ 已完成（Neon PostgreSQL 数据库存储）
 - M4: ✅ 已完成（Crash Recovery）
 - M5: ✅ 已完成（监控 + 告警）
-- M6-M22: 待处理
+- M6: ✅ 已完成（Git 深度集成）
+- M7-M22: 待处理
 
 ### 优先级分组
 | 优先级 | 范围 | Milestones |
@@ -54,6 +55,9 @@
 - 里程碑计划工具（milestone_plan + git_checkpoint/git_rollback + 任务时长追踪）
 - 监控面板（/dashboard endpoint + Discord 风格前端，含服务器信息、运行指标、里程碑进度、活动记录）
 - **Prometheus 指标 + 结构化日志**（M5）— 8 个 Prometheus 指标（turn 耗时 histogram、turn 总数 counter、token 消耗 counter、LLM 请求计数/耗时、活跃连接 gauge、工具调用 counter），`/metrics` endpoint 输出标准 Prometheus exposition format。`/health` endpoint 返回 200。StructuredLogger 输出 JSON 格式日志（timestamp + level + message + requestId + context），已集成到 server、agent loop、hooks、message-processor。LLM metrics 通过 LlmMetrics 接口 + setMetrics() 注入避免循环依赖
+
+**Git 深度集成：**
+- **Git Plugin v2.0**（M6）— 8 个工具：4 个只读工具（git_status、git_diff、git_blame、git_log）+ 2 个写操作（git_checkpoint、git_rollback）+ 2 个 Ghost Commit 工具（ghost_commit、ghost_rollback）。Ghost Commit 使用 `git stash push -u` 创建临时快照，操作成功时 drop stash，失败时 pop stash 恢复。git_checkpoint 自动注入 `Co-authored-by: Chitu Agent <chitu@agent.local>` trailer。新增 `src/tools/git/` 目录下 6 个文件（status.ts、diff.ts、blame.ts、log.ts、ghost.ts、index.ts 重写）
 
 **配置与存储：**
 - **分层配置系统**（M2）— 4 层叠加：全局 `~/.chitu/config.json` → 项目 `.chitu/config.json` → 环境变量 → CLI 参数。后者覆盖前者。支持类型验证。7 个文件：types.ts（类型定义）、defaults.ts（默认值）、loader.ts（文件加载）、merge.ts（4 层合并）、env.ts（环境变量映射）、validate.ts（验证）、index.ts（入口 + 单例缓存）
@@ -111,7 +115,7 @@ src/
   server/       — WebSocket 传输 + JSON-RPC + HTTP endpoints
   skills/       — Skills 加载系统
   thread/       — ThreadManager + ThreadStore（PG 主 + JSON 备份）
-  tools/        — 工具系统：PluginLoader + 多个 Plugin
+  tools/        — 工具系统：PluginLoader + 多个 Plugin（exec, files, plan, milestone, git v2.0）
   types.ts      — 核心类型（Thread/Turn/Item/AppEvent）
 web-ui/         — React 19 + Vite 8 前端（Discord 风格）
 docs/           — prompt.md + implement.md + documentation.md + 架构文档
@@ -137,6 +141,7 @@ Transport (WebSocket/JSON-RPC)
 - ~~无分层配置系统（M2）~~ ✅ 已完成
 - ~~无 Crash Recovery，进程崩溃丢失 turn 状态（M4）~~ ✅ 已完成
 - ~~无结构化日志和 Prometheus 指标（M5，进行中）~~ ✅ 已完成
+- ~~无 Git 深度集成（M6）~~ ✅ 已完成
 - WebSocket 无认证（M10）
 - exec 工具无沙盒隔离（M12）
 - 无 CI/CD（M13）
@@ -161,7 +166,14 @@ Transport (WebSocket/JSON-RPC)
 - **为什么**：进程崩溃时内存中的 turn 状态全部丢失。写入数据库后，重启时可以知道哪些 turn 被中断，envSnapshots 也能恢复。
 - **Trade-off**：每次 turn start/complete 多一次数据库写入，但换来的是崩溃后可恢复。
 
+### M6: Git 深度集成
+- **决策**：Ghost Commit 用 `git stash` 而非 `git commit` 创建临时快照
+- **为什么**：stash 不污染 git history，pop/drop 操作是原子性的，适合临时快照场景。checkpoint 中的 Co-authored-by 使用 `--trailer` 参数注入（兼容旧版 git 有 fallback）
+- **Trade-off**：stash 不如 commit 完整（不含 index 状态细节），但对于 Agent 的"快照-执行-回滚"场景足够
+
 ## 变更日志
+
+- 2026-04-19: M6 完成 — 新增 4 个只读 git 工具（status/diff/blame/log）、2 个 Ghost Commit 工具（ghost_commit/ghost_rollback）、checkpoint 添加 Co-authored-by。git plugin 升级到 v2.0.0（8 个工具）。新增 src/tools/git/status.ts、diff.ts、blame.ts、log.ts、ghost.ts。
 
 - 2026-04-19: M4 完成 — 新增 src/db/crash-recovery.ts，active_turns 表持久化 turn 状态（start/complete/fail/interrupt），启动时 recoverInterruptedTurns() 扫描未完成 turn，envSnapshots 持久化到数据库。迁移 005_create_active_turns。
 - 2026-04-19: M3 完成 — ThreadStore 和 MemoryStorage 迁移到 Neon PostgreSQL，保留 JSON 文件作为备份。5 个数据库迁移（threads/rollout_events/memories 表 + 索引 + active_turns）。双写策略确保可靠性。新增 src/db/connection.ts、src/db/migrate.ts。

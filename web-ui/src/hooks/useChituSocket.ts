@@ -128,6 +128,7 @@ export function useChituSocket(options?: { url?: string }) {
   // 设置通知处理器（含 delta 批量缓冲）
   const deltaBuffer = useRef<Array<{ itemId: string; delta: string }>>([])
   const deltaFlushScheduled = useRef(false)
+  const autoApproveRef = useRef(false)
 
   useEffect(() => {
     notificationHandler = (method: string, params: any) => {
@@ -218,6 +219,7 @@ export function useChituSocket(options?: { url?: string }) {
     const threadId = currentThreadIdRef.current
     if (!threadId) throw new Error('没有选中的线程')
 
+    autoApproveRef.current = !!autoApprove
     clearItems()
     setTurnStatus('in_progress')
     await sendRequest('turn/start', { threadId, message, autoApprove })
@@ -243,6 +245,7 @@ export function useChituSocket(options?: { url?: string }) {
   }, [addThread, selectThread, clearItems])
 
   const interruptTurn = useCallback(async () => {
+    autoApproveRef.current = false // 停止自主运行
     const threadId = currentThreadIdRef.current
     if (!threadId) return
     await sendRequest('turn/interrupt', { threadId })

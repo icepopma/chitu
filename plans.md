@@ -6,7 +6,7 @@
 - [x] M3: 数据库存储（Neon PostgreSQL 替代 JSON 文件）
 - [x] M4: 服务端状态持久化（Crash Recovery）
 - [x] M5: 监控 + 告警（Prometheus + 结构化日志）
-- [ ] M6: Git 深度集成
+- [x] M6: Git 深度集成
 - [ ] M7: 文件监听（File Watcher）
 - [ ] M8: 多 Shell 支持
 - [ ] M9: MCP 集成（工具生态）
@@ -127,7 +127,15 @@
   - 失败时自动回滚到快照
   - `npx tsc --noEmit` 通过
 - **Verification Commands**: `npx tsc --noEmit`
-- **Status**: pending
+- **Status**: completed
+- **Started**: 1776533388060
+- **Completed**: 1776533629418
+
+### Decisions
+- Git plugin 扩展策略：在现有 git plugin（checkpoint + rollback）基础上新增 4 个只读工具（status/diff/blame/log）。Ghost Commit 设计：用 git stash 创建临时快照而非 git commit，避免污染 git history。Co-authored-by：在 checkpoint commit 中自动注入 trailer，复用现有 checkpoint 工具。
+
+### Notes
+- 新增 6 个文件：src/tools/git/status.ts、diff.ts、blame.ts、log.ts（4 个只读工具）、ghost.ts（Ghost Commit + Rollback）。修改 checkpoint.ts 添加 Co-authored-by trailer。git plugin 从 v1.0.0 升级到 v2.0.0，工具数从 2 增加到 8。
 
 ## M7: 文件监听（File Watcher）
 - **Scope**: 实时监听项目文件变更（编辑器保存、git pull 等），自动触发上下文更新。监听 `.agents/skills/` 目录变更，热加载 Skills。使用 Node.js `fs.watch` 或 `chokidar`。参考 Codex `codex-rs/core/src/file_watcher.rs` 和 `codex-rs/core/src/skills_watcher.rs`。

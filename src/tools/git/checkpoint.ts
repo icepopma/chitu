@@ -34,9 +34,10 @@ export const gitCheckpointTool: Tool = {
       return { content: 'Not a git repository. Initialize with `git init` first.', isError: true }
     }
 
+    const trailer = '\n\nCo-authored-by: Chitu Agent <chitu@agent.local>'
     const commitMsg = milestoneId
-      ? `checkpoint: ${message} [milestone: ${milestoneId}]`
-      : `checkpoint: ${message}`
+      ? `checkpoint: ${message} [milestone: ${milestoneId}]${trailer}`
+      : `checkpoint: ${message}${trailer}`
 
     try {
       const statusBefore = execSync('git status --porcelain', { cwd, encoding: 'utf-8' })
@@ -45,7 +46,13 @@ export const gitCheckpointTool: Tool = {
       }
 
       execSync('git add -A', { cwd, stdio: 'pipe' })
-      execSync(`git commit -m "${commitMsg}"`, { cwd, stdio: 'pipe' })
+      // Use --trailer for proper git trailer support, fallback to message embed
+      try {
+        execSync(`git commit -m "${commitMsg.replace(/"/g, '\\"')}" --trailer "Co-authored-by=Chitu Agent <chitu@agent.local>"`, { cwd, stdio: 'pipe' })
+      } catch {
+        // Fallback: older git versions may not support --trailer
+        execSync(`git commit -m "${commitMsg.replace(/"/g, '\\"')}"`, { cwd, stdio: 'pipe' })
+      }
 
       const hash = execSync('git rev-parse --short HEAD', { cwd, encoding: 'utf-8' }).trim()
       const fileCount = statusBefore.trim().split('\n').length

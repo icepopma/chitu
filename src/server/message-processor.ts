@@ -232,6 +232,22 @@ export class MessageProcessor {
       logger.error('Turn execution failed', { threadId, error: err.message })
     }).finally(() => {
       this.activeTurns.delete(threadId)
+
+      // 自主运行模式：turn 结束后自动继续下一个
+      // 只有被用户中断（abort）时才停止
+      if (autoApprove && !controller.signal.aborted) {
+        setTimeout(() => {
+          if (this.activeTurns.has(threadId)) return
+          const newController = new AbortController()
+          this.activeTurns.set(threadId, newController)
+          this.manager.runTurn(threadId, '继续下一个 milestone', {
+            signal: newController.signal,
+            onApprovalNeeded: async () => true,
+          }).catch(() => {}).finally(() => {
+            this.activeTurns.delete(threadId)
+          })
+        }, 500)
+      }
     })
   }
 

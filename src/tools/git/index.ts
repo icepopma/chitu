@@ -1,2 +1,8 @@
 export { gitCheckpointTool } from './checkpoint.js'
 export { gitRollbackTool } from './rollback.js'
+export { gitStatusTool } from './status.js'
+export { gitDiffTool } from './diff.js'
+export { gitBlameTool } from './blame.js'
+export { gitLogTool } from './log.js'
+export { ghostCommitTool, ghostRollbackTool, createSnapshot } from './ghost.js'
+export type { Snapshot } from './ghost.js'
