@@ -51,7 +51,13 @@ export function Sparkline({ data, width = 240, height = 60, color = '#5865f2', l
         {data.map((v, i) => {
           const x = padding + (i / (data.length - 1)) * (width - padding * 2)
           const y = height - padding - ((v - min) / range) * (height - padding * 2)
-          return <circle key={i} cx={x} cy={y} r="2" fill={color} opacity={i === data.length - 1 ? 1 : 0.4} />
+          return (
+            <circle key={i} cx={x} cy={y} r="3" fill={color} opacity={i === data.length - 1 ? 1 : 0.4}
+              className="hover:opacity-100 hover:r-4 transition-opacity cursor-pointer"
+            >
+              <title>{String(v)}</title>
+            </circle>
+          )
         })}
       </svg>
     </div>

@@ -16,7 +16,7 @@
 - [x] M13: Docker + CI/CD
 - [x] M14: Review 模式
 - [x] M15: 增强监控面板（对标 Hermes HUD）
-- [ ] M16: 多 Agent 协作（子任务拆分 + 并行）
+- [x] M16: 多 Agent 协作（子任务拆分 + 并行）
 - [ ] M17: 代码语义索引（AST + Embedding 搜索）
 - [ ] M18: IDE 插件（VS Code）
 - [ ] M19: 用户系统 + 组织 + 权限
@@ -321,7 +321,16 @@
   - 深度限制为 3 层
   - `npx tsc --noEmit` 通过
 - **Verification Commands**: `npx tsc --noEmit`
-- **Status**: pending
+- **Status**: completed
+- **Started**: 1776561711641
+- **Completed**: 1776563042875
+
+### Decisions
+- 子 Agent 架构设计：SubAgent 是独立的 Agent Loop 实例，由 AgentSpawner 管理。深度限制 3 层（0=root, 1, 2），防止无限嵌套。子 Agent 通过 AsyncMessageQueue 与父 Agent 通信。子 Agent 执行完后结果通过 spawn_result 事件回传。子 Agent 共享父 Thread 的文件系统但使用独立的上下文窗口（避免父 Agent 上下文过大）。工具集与父 Agent 相同，但受深度限制（L2 子 Agent 不能再 spawn）。
+- 子 Agent 架构设计：SubAgent 是独立的 Agent Loop 实例，由 AgentSpawner 管理。深度限制 3 层（0=root, 1, 2），防止无限嵌套。子 Agent 通过 AsyncMessageQueue 与父 Agent 通信。子 Agent 执行完后结果通过 spawn_result 事件回传。子 Agent 共享父 Thread 的文件系统但使用独立的上下文窗口（避免父 Agent 上下文过大）。工具集与父 Agent 相同，但受深度限制（L2 子 Agent 不能再 spawn）。
+
+### Notes
+- M16 代码实现已完成。spawn.ts 包含：AgentSpawner 类（管理子 Agent 生命周期）、AsyncMessageQueue（Agent 间异步消息通信）、createSpawnTool（agent_spawn 工具工厂函数）。深度限制 MAX_SPAWN_DEPTH=2（即 0=root, 1=子Agent, 2=孙Agent 三层）。ThreadManager.runTurn() 中创建 spawner 并添加 spawnTool 到工具列表。沙盒 bug 同步修复：executor.ts 中 sandbox-exec -p 改为 -f（从文件读取策略），降级条件简化为 exitCode !== 0。
 
 ## M17: 代码语义索引（AST + Embedding 搜索）
 - **Scope**: 使用 `tree-sitter` 解析项目 AST，构建符号索引（类、函数、变量）。用 embedding 向量化代码片段，支持语义搜索。注入索引信息到 Agent 上下文。

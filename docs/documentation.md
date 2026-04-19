@@ -24,7 +24,9 @@
 - M13: ✅ 已完成（Docker + CI/CD）
 - M14: ✅ 已完成（Review 模式）
 - M15: ✅ 已完成（增强监控面板）
-- M16-M22: 待处理
+- M16: ✅ 已完成（多 Agent 协作）
+- M17: 待处理
+- M18-M22: 待处理
 
 ### 优先级分组
 | 优先级 | 范围 | Milestones |
@@ -34,7 +36,7 @@
 | P2 平台支持 | 让赤兔跑在更多环境 | M7 ✅, M8 ✅ |
 | P3 生态集成 | 扩展能力边界 | M9 ✅, M10 ✅ |
 | P4 多端接入 | CLI/沙盒/容器 | M11 ✅, M12（沙盒）, M13（Docker CI） |
-| P5 高级功能 | Review/监控/多Agent | M14 ✅（Review）, M15 ✅（监控增强）, M16（多Agent） |
+| P5 高级功能 | Review/监控/多Agent | M14 ✅（Review）, M15 ✅（监控增强）, M16 ✅（多Agent） |
 | P6 远期目标 | 索引/IDE/用户/计费 | M17-M21 |
 | P7 收尾 | 文档 | M22 |
 
@@ -98,6 +100,12 @@
 - **分层配置系统**（M2）— 4 层叠加：全局 `~/.chitu/config.json` → 项目 `.chitu/config.json` → 环境变量 → CLI 参数。后者覆盖前者。支持类型验证。7 个文件：types.ts（类型定义）、defaults.ts（默认值）、loader.ts（文件加载）、merge.ts（4 层合并）、env.ts（环境变量映射）、validate.ts（验证）、index.ts（入口 + 单例缓存）
 - **Neon PostgreSQL 数据库存储**（M3）— ThreadStore + MemoryStorage 双写策略（PG 主存储 + JSON 文件备份），启动时自动运行 5 个迁移（threads、rollout_events、memories 表 + 索引 + active_turns 表），数据库不可用时自动降级到文件存储
 
+**多 Agent 协作：**
+- **子 Agent 派发系统**（M16）— 新增 `src/agent/spawn.ts`，实现 AgentSpawner 类（管理子 Agent 生命周期）+ AsyncMessageQueue（Agent 间异步消息通信）+ createSpawnTool（agent_spawn 工具工厂函数）。深度限制 MAX_SPAWN_DEPTH=2（即 0=root, 1=子Agent, 2=孙Agent 三层嵌套）。子 Agent 拥有独立的 Agent Loop 实例和上下文窗口，共享父 Thread 的文件系统。工具集与父 Agent 相同但受深度限制（L2 子 Agent 不能再 spawn）。ThreadManager.runTurn() 中创建 spawner 并添加 spawnTool 到工具列表。子 Agent 开始/完成时通过回调发射 item/started、item/completed 事件。
+
+**沙盒修复（M16 期间）：**
+- 修复 macOS sandbox-exec 的 'unbound variable' 错误：将 `-p`（内联策略字符串）改为 `-f`（从文件读取策略），避免策略中的 S-expression 特殊字符被 shell 解析。降级条件简化为 `exitCode !== 0`（移除了多余的 `&& error` 检查），确保 sandbox-exec 失败时始终降级到直接执行。
+
 ## 本地启动
 
 ### 后端
@@ -147,7 +155,7 @@ cd web-ui && npm run dev
 
 ```
 src/
-  agent/        — Agent Loop（核心循环）+ context compaction
+  agent/        — Agent Loop（核心循环）+ context compaction + spawn（子 Agent 派发）
   auth/         — WebSocket 认证（API Key + JWT）
   cli/          — CLI 终端模式（readline TUI）
   config/       — 分层配置系统（types/defaults/loader/merge/env/validate）
@@ -211,7 +219,9 @@ CLI (readline)
 - ~~无 CLI 终端模式（M11）~~ ✅ 已完成
 - ~~exec 工具无沙盒隔离（M12）~~ ✅ 已完成
 - 无 CI/CD（M13）→ ✅ 已完成
-- 监控面板指标不够丰富，需对标 Hermes HUD 增强（M15）
+- ~~监控面板指标不够丰富，需对标 Hermes HUD 增强（M15）~~ ✅ 已完成
+- ~~无子 Agent 派发能力（M16）~~ ✅ 已完成
+- macOS sandbox-exec -p 标志导致 'unbound variable' 错误 → ✅ 已修复（改为 -f）
 
 ## 设计决策记录
 
@@ -275,7 +285,14 @@ CLI (readline)
 - **为什么**：system prompt 引导 Agent 行为（只分析不修改 + 结构化输出审查结果），工具过滤作为硬性保障（只注册只读工具到 Agent Loop）。exec 工具额外做命令只读检测（正则匹配 cat/ls/grep/git status 等），防止 Agent 通过 shell 命令间接写入。双层防护比单层更可靠。
 - **Trade-off**：exec 工具的只读命令检测用正则匹配，可能遗漏边缘情况（如 `python -c "open('x','w')"`）。但对于常见场景足够，且 system prompt 层面已经约束了 Agent 不应尝试写入。
 
+### M16: 多 Agent 协作
+- **决策**：SubAgent 是独立的 Agent Loop 实例，由 AgentSpawner 管理。深度限制 3 层（0=root, 1, 2），防止无限嵌套。子 Agent 通过 AsyncMessageQueue 与父 Agent 通信。子 Agent 共享父 Thread 的文件系统但使用独立的上下文窗口。
+- **为什么**：复杂任务可能需要拆分为独立子任务并行/串行执行。每个子 Agent 有独立上下文避免父 Agent 上下文过大。深度限制防止 Agent 递归 spawn 导致资源耗尽。参考 Codex `codex-rs/core/src/spawn.rs`。
+- **Trade-off**：子 Agent 当前是串行执行的，并行执行需要额外的并发控制。子 Agent 的 maxIterations 限制为 30（比主 Agent 的 10000 更严格），适合子任务但不能处理超大型任务。
+
 ## 变更日志
+
+2026-04-19: M16 完成 — 新增 src/agent/spawn.ts（AgentSpawner + AsyncMessageQueue + createSpawnTool）。子 Agent 独立 Agent Loop 实例，深度限制 3 层，共享文件系统但独立上下文。ThreadManager 集成 spawnTool。修复沙盒 sandbox-exec -p→-f。
 
 - 2026-04-19: M14 完成 — 新增 src/agent/review-prompt.ts（review 系统提示 + 只读工具过滤 + 只读命令检测）。ThreadManager 根据 mode 切换系统提示和工具集。前端 ChatInput 新增 Review 模式切换按钮（Eye 图标）。完整链路：前端 toggle → JSON-RPC turn/start(mode) → MessageProcessor → ThreadManager → review prompt + 只读工具。
 

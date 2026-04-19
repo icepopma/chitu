@@ -27,6 +27,7 @@ import { isDbAvailable } from '../db/connection.js'
 import { chituMetrics } from '../monitoring/metrics.js'
 import type { FileChangeBuffer } from '../watcher/file-change-buffer.js'
 import { loadMilestonePlan } from '../tools/milestone-plan/parser.js'
+import { AgentSpawner, createSpawnTool, MAX_SPAWN_DEPTH } from '../agent/spawn.js'
 
 /** 服务器运行状态 */
 export interface ServerStatus {
@@ -329,9 +330,46 @@ export class ThreadManager {
     const allTools = createToolRegistry().list()
 
     // M14: Review 模式 — 只允许只读工具
+    // M16: 子 Agent 支持 — 创建 spawner 和 spawn 工具
+    const spawner = new AgentSpawner(
+      `agent-${threadId}`,
+      { maxDepth: MAX_SPAWN_DEPTH },
+      {
+        onSubAgentStarted: (task) => {
+          this.emit({
+            type: 'item/started' as const,
+            item: {
+              id: task.id,
+              type: 'tool_call' as const,
+              status: 'started' as const,
+              content: `[子 Agent 开始] ${task.description}`,
+              toolName: 'agent_spawn',
+              startedAt: Date.now(),
+            },
+            thread,
+          })
+        },
+        onSubAgentCompleted: (result) => {
+          this.emit({
+            type: 'item/completed' as const,
+            item: {
+              id: result.taskId,
+              type: 'tool_call' as const,
+              status: 'completed' as const,
+              content: result.content,
+              toolName: 'agent_spawn',
+              startedAt: Date.now() - result.durationMs,
+              completedAt: Date.now(),
+            },
+            thread,
+          })
+        },
+      },
+    )
+    const spawnTool = createSpawnTool(spawner, `agent-${threadId}`, threadId, 0)
     const tools = options?.mode === 'review'
       ? allTools.filter(t => isToolAllowedInReview(t.name))
-      : allTools
+      : [...allTools, spawnTool]
 
     // M14: Review 模式使用专用系统提示
     const effectiveSystemPrompt = options?.mode === 'review'

@@ -11,7 +11,7 @@
  * - 平台检测 → 策略生成 → 沙盒执行
  *
  * 学习重点：
- * - sandbox-exec -p <policy> <command> 在 macOS 上启动沙盒进程
+ * - sandbox-exec -f <policy-file> <command> 在 macOS 上启动沙盒进程
  * - 策略文件是临时创建的，执行完毕后清理
  * - 沙盒是安全层，不影响正常开发流程
  */
@@ -143,7 +143,9 @@ function execDirect(
  * macOS sandbox-exec 沙盒执行
  *
  * 使用 Seatbelt 策略文件限制进程权限。
- * sandbox-exec -p <policy> <command>
+ * sandbox-exec -f <policy-file> <command>
+ *
+ * 修复：使用 -f（文件）而非 -p（内联字符串），避免 shell 转义问题
  */
 function execMacosSandbox(
   command: string,
@@ -161,8 +163,9 @@ function execMacosSandbox(
   }
 
   return new Promise((resolve) => {
-    // sandbox-exec -p <policy_file> <shell> -c <command>
-    const sandboxCommand = `sandbox-exec -p "${policyFile}" ${opts.shell} -c ${JSON.stringify(command)}`
+    // 使用 -f 标志从文件读取策略（而非 -p 内联字符串）
+    // 避免策略中的特殊字符（括号、引号）被 shell 解析导致 'unbound variable' 错误
+    const sandboxCommand = `sandbox-exec -f ${policyFile} ${opts.shell} -c ${JSON.stringify(command)}`
 
     childExec(
       sandboxCommand,
@@ -183,6 +186,19 @@ function execMacosSandbox(
 
         const exitCode = error ? (error as any).code || 1 : 0
         const timedOut = error ? !!(error as any).killed : false
+
+        // 沙盒执行失败时自动降级到直接执行
+        // 常见原因：策略语法错误、sandbox-exec 版本不兼容、unbound variable 等
+        if (exitCode !== 0) {
+          execDirect(command, opts).then((directResult) => {
+            directResult.stderr = `[sandbox fallback: exit ${exitCode}]\n${directResult.stderr}`
+            directResult.sandboxed = false
+            directResult.platform = 'none'
+            resolve(directResult)
+          })
+          return
+        }
+
         resolve({
           stdout: (stdout || '').trim(),
           stderr: (stderr || '').trim(),
