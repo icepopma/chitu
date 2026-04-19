@@ -146,7 +146,7 @@ export class ThreadManager {
   }
 
   /** 创建新线程 */
-  async create(title?: string): Promise<Thread> {
+  async create(title?: string, options?: { ownerId?: string; orgId?: string }): Promise<Thread> {
     const now = Date.now()
     const thread: Thread = {
       id: randomUUID(),
@@ -155,6 +155,8 @@ export class ThreadManager {
       items: [],
       createdAt: now,
       updatedAt: now,
+      ownerId: options?.ownerId,
+      orgId: options?.orgId,
     }
     await this.store.save(thread)
     this.emit({ type: 'thread/started', thread })
@@ -240,6 +242,8 @@ export class ThreadManager {
       items: [...source.items],
       createdAt: now,
       updatedAt: now,
+      ownerId: source.ownerId,
+      orgId: source.orgId,
     }
     await this.store.save(forked)
     this.emit({ type: 'thread/started', thread: forked })

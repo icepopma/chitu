@@ -23,6 +23,10 @@ export interface AuthResult {
 	method?: 'apikey' | 'jwt'
 	/** 认证失败原因 */
 	reason?: string
+	/** JWT 认证时的用户 ID */
+	userId?: string
+	/** JWT 认证时的组织 ID */
+	orgId?: string
 }
 
 /**
@@ -131,7 +135,7 @@ function verifyJwt(token: string, secret: string): AuthResult {
 			return { success: false, reason: 'JWT token expired' }
 		}
 
-		return { success: true, method: 'jwt' }
+		return { success: true, method: 'jwt', userId: payload.userId, orgId: payload.orgId }
 	} catch (err: any) {
 		return { success: false, reason: `JWT verification failed: ${err.message}` }
 	}

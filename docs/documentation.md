@@ -27,7 +27,8 @@
 - M16: ✅ 已完成（多 Agent 协作）
 - M17: ✅ 已完成（代码语义索引）
 - M18: ✅ 已完成（IDE 插件 VS Code）
-- M19-M22: 待处理
+- M19: ✅ 已完成（用户系统 + 组织 + 权限）
+- M20-M22: 待处理
 
 ### 优先级分组
 | 优先级 | 范围 | Milestones |
@@ -115,6 +116,9 @@
 
 **VS Code 扩展：**
 - **IDE 插件**（M18）— 新增 `vscode-extension/` 目录（独立子项目）。扩展通过 WebSocket JSON-RPC 2.0 直接连接 App Server（复用现有协议，不需要 stdio 适配层）。包含 4 个核心文件：`extension.ts`（激活/停用生命周期，注册命令和配置监听）、`client.ts`（WebSocket JSON-RPC 客户端，自动重连 + 30 秒请求超时 + initialize 握手 + pending request 匹配）、`chat-provider.ts`（侧边栏 Chat WebView Provider，完整聊天 UI — 消息渲染、流式 delta 输出、工具调用显示、审批交互框）、`diff-provider.ts`（内联 diff 预览，TextDocumentContentProvider + vscode.diff 命令显示原始/修改对比）。贡献点：侧边栏 Chat 面板、4 个命令（openChat/sendSelection/showDiffPreview/newThread）、3 个快捷键（cmd+shift+c/e/n）、3 个配置项（serverUrl/autoApprove/token）。支持认证 Token 透传（URL query 参数 `?token=xxx`）。
+
+**用户系统 + 组织权限：**
+- **用户注册/登录 + 组织管理**（M19）— 新增 `src/auth/user-store.ts`（用户 CRUD + 密码哈希 + JWT 生成 + 组织管理）和 `src/server/user-handlers.ts`（JSON-RPC 薄适配层）。`src/server/message-processor.ts` 新增 8 个 JSON-RPC 方法：`auth/register`（注册）、`auth/login`（登录返回 JWT）、`auth/getUser`（获取用户信息）、`org/create`（创建组织）、`org/addMember`（添加成员）、`org/listMembers`（列出成员）、`org/list`（列出用户组织）、`admin/listUsers`（管理员列出所有用户）。Thread 类型新增 `ownerId` 和 `orgId` 可选字段，ThreadStore PG 读写和 ThreadManager.create/fork 均已更新支持归属关系。数据库迁移 006-008 创建 users 表、organizations/org_members 表、threads 添加 owner_id/org_id 列。
 
 ## 本地启动
 
@@ -236,6 +240,7 @@ CLI (readline)
 - macOS sandbox-exec -p 标志导致 'unbound variable' 错误 → ✅ 已修复（改为 -f）
 - ~~无代码语义索引，Agent 无法快速查找符号定义（M17）~~ ✅ 已完成
 - ~~无 IDE 插件支持（M18）~~ ✅ 已完成
+- ~~无用户系统和组织权限（M19）~~ ✅ 已完成
 
 ## 设计决策记录
 
@@ -314,7 +319,14 @@ CLI (readline)
 - **为什么**：现有 App Server 已提供完整的 WebSocket JSON-RPC 接口，扩展只需实现一个客户端即可复用全部协议。WebView 内联 HTML 比 React 框架更轻量，避免引入打包工具链。独立 tsconfig（commonjs 模块）与主项目解耦，不影响主项目编译。
 - **Trade-off**：WebView 内联 HTML 不如 React 组件化可维护，但对于 Chat UI 的复杂度足够。ws 库作为扩展运行时依赖（VS Code 扩展运行在 Node.js 环境，可以使用 ws）。
 
+### M19: 用户系统 + 组织权限
+- **决策**：密码用 Node.js `crypto.scryptSync` 哈希，JWT 用 HMAC-SHA256（复用 M10 的自实现方案），不引入 bcrypt/jsonwebtoken 等外部依赖。组织权限用简单的 org_members 关联表，不实现 RBAC 角色。
+- **为什么**：scrypt 是 Node.js 内置的强密码哈希算法（比 bcrypt 更抗 GPU 暴力破解），零外部依赖。JWT 复用 M10 已验证的自实现方案保持一致性。org_members 表用 (org_id, user_id) 复合主键 + role 字段，满足基本的组织权限需求且不过度设计。
+- **Trade-off**：scryptSync 是同步操作（注册/登录时阻塞事件循环），但密码哈希通常 <100ms，对低并发场景可接受。未实现 GitHub OAuth（需外部凭证配置）。未实现细粒度 RBAC（admin/member 两种角色足够起步）。
+
 ## 变更日志
+
+2026-04-19: M19 完成 — 用户系统 + 组织权限。新增 `src/auth/user-store.ts`（用户 CRUD + scrypt 密码哈希 + JWT 生成 + 组织管理）、`src/server/user-handlers.ts`（JSON-RPC 适配层）。`message-processor.ts` 新增 8 个方法（auth/register、auth/login、auth/getUser、org/create、org/addMember、org/listMembers、org/list、admin/listUsers）。Thread 类型新增 ownerId/orgId，ThreadStore 和 ThreadManager 已更新。修复 ThreadStore INSERT/SELECT SQL 列名遗漏。fork 方法继承 ownerId/orgId。
 
 2026-04-19: M18 完成 — 新增 vscode-extension/ 目录（独立子项目），VS Code 扩展通过 WebSocket JSON-RPC 连接 App Server。包含 extension.ts（入口）、client.ts（JSON-RPC 客户端）、chat-provider.ts（侧边栏 Chat WebView）、diff-provider.ts（内联 diff 预览）。4 个命令、3 个快捷键、3 个配置项。
 

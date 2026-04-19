@@ -29,7 +29,7 @@ export class ThreadStore {
 			try {
 				const sql = getDb()
 				await sql`
-					INSERT INTO threads (id, title, status, items, current_plan, created_at, updated_at)
+					INSERT INTO threads (id, title, status, items, current_plan, created_at, updated_at, owner_id, org_id)
 					VALUES (
 						${thread.id},
 						${thread.title || 'Untitled'},
@@ -37,14 +37,18 @@ export class ThreadStore {
 						${JSON.stringify(thread.items || [])}::jsonb,
 						${thread.currentPlan ? JSON.stringify(thread.currentPlan) : null}::jsonb,
 						${thread.createdAt},
-						${thread.updatedAt}
+						${thread.updatedAt},
+						${thread.ownerId || null},
+						${thread.orgId || null}
 					)
 					ON CONFLICT (id) DO UPDATE SET
 						title = EXCLUDED.title,
 						status = EXCLUDED.status,
 						items = EXCLUDED.items,
 						current_plan = EXCLUDED.current_plan,
-						updated_at = EXCLUDED.updated_at
+						updated_at = EXCLUDED.updated_at,
+						owner_id = EXCLUDED.owner_id,
+						org_id = EXCLUDED.org_id
 				`
 			} catch (err: any) {
 				console.warn(`[ThreadStore] 数据库写入失败，降级到文件: ${err.message}`)
@@ -68,7 +72,7 @@ export class ThreadStore {
 			try {
 				const sql = getDb()
 				const rows = await sql`
-					SELECT id, title, status, items, current_plan, created_at, updated_at
+					SELECT id, title, status, items, current_plan, created_at, updated_at, owner_id, org_id
 					FROM threads WHERE id = ${threadId}
 				` as any[]
 				if (rows.length > 0) {
@@ -168,6 +172,8 @@ export class ThreadStore {
 			currentPlan,
 			createdAt: Number(row.created_at),
 			updatedAt: Number(row.updated_at),
+			ownerId: row.owner_id || undefined,
+			orgId: row.org_id || undefined,
 		}
 	}
 }

@@ -11,6 +11,7 @@
  * 2. 监听 ThreadManager AppEvent → 转成 JSON-RPC 通知 → 推给客户端
  * 3. 管理 initialize 握手状态
  * 4. Turn 异步执行（turn/start 立即返回，Agent Loop 后台跑）
+ * 5. 用户注册/登录 + 组织管理路由（M19）
  */
 
 import type { WebSocket } from 'ws'
@@ -18,6 +19,17 @@ import type { AppEvent, Thread, Item, Turn } from '../types.js'
 import { ThreadManager } from '../thread/manager.js'
 import { classifyCommand } from '../tools/policy.js'
 import { logger } from '../monitoring/logger.js'
+import {
+  registerUser,
+  loginUser,
+  getUserById,
+  listUsers,
+  createOrganization,
+  listUserOrganizations,
+  inviteToOrganization,
+  listOrgMembers,
+  getUserRole,
+} from './user-handlers.js'
 import {
   type JsonRpcRequest,
   createResponse,
@@ -105,6 +117,7 @@ export class MessageProcessor {
 
     try {
       switch (method) {
+        // Thread 操作
         case 'thread/create':
           return await this.handleThreadCreate(ws, reqId, params)
         case 'thread/list':
@@ -119,12 +132,34 @@ export class MessageProcessor {
           return await this.handleThreadRename(ws, reqId, params)
         case 'thread/fork':
           return await this.handleThreadFork(ws, reqId, params)
+        // Turn 操作
         case 'turn/start':
           return await this.handleTurnStart(ws, reqId, params)
         case 'turn/interrupt':
           return await this.handleTurnInterrupt(ws, reqId, params)
+        // 审批
         case 'approval/respond':
           return await this.handleApprovalRespond(ws, reqId, params)
+        // M19: 用户认证
+        case 'auth/register':
+          return await this.handleAuthRegister(ws, reqId, params)
+        case 'auth/login':
+          return await this.handleAuthLogin(ws, reqId, params)
+        case 'auth/me':
+          return await this.handleAuthMe(ws, reqId, params)
+        case 'auth/users':
+          return await this.handleAuthUsers(ws, reqId)
+        // M19: 组织管理
+        case 'org/create':
+          return await this.handleOrgCreate(ws, reqId, params)
+        case 'org/list':
+          return await this.handleOrgList(ws, reqId, params)
+        case 'org/invite':
+          return await this.handleOrgInvite(ws, reqId, params)
+        case 'org/members':
+          return await this.handleOrgMembers(ws, reqId, params)
+        case 'org/role':
+          return await this.handleOrgRole(ws, reqId, params)
         default:
           this.send(ws, createError(reqId, METHOD_NOT_FOUND, `Method not found: ${method}`))
       }
@@ -146,7 +181,9 @@ export class MessageProcessor {
 
   private async handleThreadCreate(ws: WebSocket, id: number | string, params?: Record<string, unknown>): Promise<void> {
     const title = (params?.title as string) || undefined
-    const thread = await this.manager.create(title)
+    const ownerId = params?.ownerId as string | undefined
+    const orgId = params?.orgId as string | undefined
+    const thread = await this.manager.create(title, { ownerId, orgId })
     this.send(ws, createResponse(id, { thread }))
   }
 
@@ -366,6 +403,55 @@ export class MessageProcessor {
     this.pendingApprovals.delete(approvalId)
     pending.resolve(approved)
     this.send(ws, createResponse(id, { approved }))
+  }
+
+  // ===== M19: 用户认证路由 =====
+
+  private async handleAuthRegister(ws: WebSocket, id: number | string, params?: Record<string, unknown>): Promise<void> {
+    const result = await registerUser(params || {})
+    this.send(ws, createResponse(id, result))
+  }
+
+  private async handleAuthLogin(ws: WebSocket, id: number | string, params?: Record<string, unknown>): Promise<void> {
+    const result = await loginUser(params || {})
+    this.send(ws, createResponse(id, result))
+  }
+
+  private async handleAuthMe(ws: WebSocket, id: number | string, params?: Record<string, unknown>): Promise<void> {
+    const user = await getUserById(params || {})
+    this.send(ws, createResponse(id, { user }))
+  }
+
+  private async handleAuthUsers(ws: WebSocket, id: number | string): Promise<void> {
+    const users = await listUsers()
+    this.send(ws, createResponse(id, { users }))
+  }
+
+  // ===== M19: 组织管理路由 =====
+
+  private async handleOrgCreate(ws: WebSocket, id: number | string, params?: Record<string, unknown>): Promise<void> {
+    const org = await createOrganization(params || {})
+    this.send(ws, createResponse(id, { org }))
+  }
+
+  private async handleOrgList(ws: WebSocket, id: number | string, params?: Record<string, unknown>): Promise<void> {
+    const orgs = await listUserOrganizations(params || {})
+    this.send(ws, createResponse(id, { orgs }))
+  }
+
+  private async handleOrgInvite(ws: WebSocket, id: number | string, params?: Record<string, unknown>): Promise<void> {
+    const result = await inviteToOrganization(params || {})
+    this.send(ws, createResponse(id, result))
+  }
+
+  private async handleOrgMembers(ws: WebSocket, id: number | string, params?: Record<string, unknown>): Promise<void> {
+    const members = await listOrgMembers(params || {})
+    this.send(ws, createResponse(id, { members }))
+  }
+
+  private async handleOrgRole(ws: WebSocket, id: number | string, params?: Record<string, unknown>): Promise<void> {
+    const result = await getUserRole(params || {})
+    this.send(ws, createResponse(id, result))
   }
 
   // ===== 事件广播 =====

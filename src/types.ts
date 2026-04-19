@@ -18,6 +18,10 @@ export interface Thread {
   status: ThreadStatus
   items: Item[]
   currentPlan?: PlanStep[]
+  /** M19: Thread 归属用户 */
+  ownerId?: string
+  /** M19: Thread 归属组织 */
+  orgId?: string
   createdAt: number
   updatedAt: number
 }

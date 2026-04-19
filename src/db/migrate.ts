@@ -76,6 +76,52 @@ const MIGRATIONS = [
 			CREATE INDEX IF NOT EXISTS idx_active_turns_status ON active_turns(status);
 		`,
 	},
+	{
+		name: '006_create_users',
+		sql: `
+			CREATE TABLE IF NOT EXISTS users (
+				id TEXT PRIMARY KEY,
+				email TEXT NOT NULL UNIQUE,
+				display_name TEXT NOT NULL DEFAULT '',
+				password_hash TEXT NOT NULL,
+				created_at BIGINT NOT NULL,
+				updated_at BIGINT NOT NULL
+			);
+			CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+		`,
+	},
+	{
+		name: '007_create_organizations',
+		sql: `
+			CREATE TABLE IF NOT EXISTS organizations (
+				id TEXT PRIMARY KEY,
+				name TEXT NOT NULL,
+				slug TEXT NOT NULL UNIQUE,
+				created_at BIGINT NOT NULL
+			);
+			CREATE INDEX IF NOT EXISTS idx_organizations_slug ON organizations(slug);
+
+			CREATE TABLE IF NOT EXISTS org_members (
+				org_id TEXT NOT NULL,
+				user_id TEXT NOT NULL,
+				role TEXT NOT NULL DEFAULT 'member',
+				joined_at BIGINT NOT NULL,
+				PRIMARY KEY (org_id, user_id),
+				FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE,
+				FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+			);
+			CREATE INDEX IF NOT EXISTS idx_org_members_user_id ON org_members(user_id);
+		`,
+	},
+	{
+		name: '008_add_owner_to_threads',
+		sql: `
+			ALTER TABLE threads ADD COLUMN IF NOT EXISTS owner_id TEXT;
+			ALTER TABLE threads ADD COLUMN IF NOT EXISTS org_id TEXT;
+			CREATE INDEX IF NOT EXISTS idx_threads_owner_id ON threads(owner_id);
+			CREATE INDEX IF NOT EXISTS idx_threads_org_id ON threads(org_id);
+		`,
+	},
 ]
 
 export async function runMigrations(): Promise<void> {

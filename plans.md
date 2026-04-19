@@ -19,7 +19,7 @@
 - [x] M16: 多 Agent 协作（子任务拆分 + 并行）
 - [x] M17: 代码语义索引（AST + Embedding 搜索）
 - [x] M18: IDE 插件（VS Code）
-- [ ] M19: 用户系统 + 组织 + 权限
+- [x] M19: 用户系统 + 组织 + 权限
 - [ ] M20: 用量追踪 + 计费
 - [ ] M21: 多模态支持
 - [ ] M22: Documentation + Final Verification
@@ -379,7 +379,12 @@
   - Thread 归属用户
   - `npx tsc --noEmit` 通过
 - **Verification Commands**: `npx tsc --noEmit`
-- **Status**: pending
+- **Status**: completed
+- **Started**: 1776564661036
+- **Completed**: 1776565455747
+
+### Decisions
+- M19 设计方案：1) 用户系统使用邮箱+密码注册，密码用 Node.js crypto.scryptSync 哈希存储（零外部依赖）。不实现 GitHub OAuth（需要外部凭证和 OAuth 应用注册，按照 implement.md 规则不因缺少凭证停下）。2) 组织是一组用户的集合，Thread 归属组织。角色 4 级：Owner/Admin/Member/Viewer。3) 扩展现有 auth 模块，新增用户管理模块 src/auth/user-store.ts。4) Thread 表新增 owner_id 和 org_id 字段（迁移 006/007）。5) 新增 JSON-RPC 方法：auth/register, auth/login, org/create, org/invite, org/list, org/members。JWT payload 包含 userId 和 orgId。
 
 ## M20: 用量追踪 + 计费
 - **Scope**: 每次 turn 记录 token 消耗到 `usage_logs` 表。按 user/org 聚合每日/每月用量。配额系统：免费额度 + 付费套餐。
