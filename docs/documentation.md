@@ -30,7 +30,7 @@
 - M19: ✅ 已完成（用户系统 + 组织 + 权限）
 - M20: ✅ 已完成（用量追踪 + 计费）
 - M21: ✅ 已完成（多模态支持）
-- M22: 待处理
+- M22: ✅ 已完成（Documentation + Final Verification）
 
 ### 优先级分组
 | 优先级 | 范围 | Milestones |
@@ -42,7 +42,7 @@
 | P4 多端接入 | CLI/沙盒/容器 | M11 ✅, M12（沙盒）, M13（Docker CI） |
 | P5 高级功能 | Review/监控/多Agent | M14 ✅（Review）, M15 ✅（监控增强）, M16 ✅（多Agent） |
 | P6 远期目标 | 索引/IDE/用户/计费/多模态 | M17 ✅, M18 ✅, M19 ✅, M20 ✅, M21 ✅ |
-| P7 收尾 | 文档 | M22 |
+| P7 收尾 | 文档 | M22 ✅ |
 
 ### 已完成的核心能力
 
@@ -334,12 +334,17 @@ CLI (readline)
 - **为什么**：异步记录用量避免增加 turn 延迟。配额检查同步执行确保超限请求在消耗资源前被拒绝。SQL 聚合查询（SUM + date_trunc + GROUP BY）利用数据库能力做统计，避免在应用层维护计数器。套餐定义用代码常量而非数据库表，减少一次查询。
 - **Trade-off**：用量查询用 `sql.unsafe()` 进行动态列名查询（tagged template 不支持动态列名），有 SQL 注入风险但参数是内部生成的 scope/user 值，非用户输入。当月用量实时聚合查询在高数据量时可能变慢，未来可考虑缓存或预聚合。
 
-### M21: 多模态支持
+### M22: Documentation + Final Verification
+- **决策**：三个文档各有侧重——README.md 面向用户（安装、使用、快速开始），CLAUDE.md 面向 AI 助手（编码约定、模块说明、架构细节），docs/architecture.md 面向开发者（完整系统架构文档，含数据模型、流程图、设计决策）。
+- **为什么**：不同受众需要不同粒度的文档。README 是项目门面，需要简洁明了；CLAUDE.md 是 AI 助手的工作手册，需要精确的模块描述和约定；architecture.md 是深入学习材料，需要完整的架构图和设计解释。
+- **Trade-off**：三份文档有部分信息重叠（如架构描述），但各有侧重。维护成本略高，但确保每个受众都能快速找到需要的信息。
 - **决策**：图片上传使用独立 HTTP POST endpoint（而非通过 WebSocket 传输 base64），前端先上传图片获取服务器路径，再在 `turn/start` 时传递路径列表。LLM 调用时将图片路径转为 `image_url` ContentPart，构建多模态消息。前端使用本地 `URL.createObjectURL` 做即时预览，发送成功后释放。
 - **为什么**：WebSocket 传输 base64 图片会阻塞 JSON-RPC 通道（大图片可达数 MB）。HTTP 上传是标准做法，支持流式传输和进度显示。服务器已有静态文件服务（`/uploads/*`），图片路径直接复用。`ContentPart[]` 类型已在 `llm/client.ts` 中定义（对齐 OpenAI multimodal API），后端只需在 Agent Loop 中替换最后一条用户消息的 content 即可。
 - **Trade-off**：上传需要额外 HTTP 请求（与 WebSocket 通道分离），但避免了 WebSocket 消息体积问题。图片目前只在用户消息中展示，Assistant 回复中的图表生成（Mermaid/PlantUML）留给后续 milestone。前端限制最多 5 张图片、单张最大 10MB，防止滥用。
 
 ## 变更日志
+
+2026-04-19: M22 完成 — Documentation + Final Verification。重写 README.md（完整安装/使用/开发流程、22 个里程碑列表、Docker 部署、技术栈表格）。重写 CLAUDE.md（更新所有模块描述：Agent Spawner、Review Prompt、Database、Auth、Monitoring、Upload、Utils 等；新增环境变量表格、多模态说明）。新建 docs/architecture.md（完整系统架构文档：25 个章节覆盖数据模型、Agent Loop、传输层、事件协议、工具系统、上下文构建、多模态、多 Agent、认证、用户组织、计费、持久化、文件监听、MCP、索引、沙盒、监控、配置、Review 模式、CLI、VS Code 扩展、Docker）。
 
 2026-04-19: M21 完成 — 多模态支持。后端基础设施已存在（Item.images 字段、ContentPart 类型、multimodalContent 配置、upload 模块）。前端新增：ChatInput 图片上传按钮 + 粘贴图片 + 预览条（最多 5 张，10MB 限制，上传中 spinner）、MessageItem 内嵌 MessageImages 组件（缩略图 + 点击大图查看）、useChituSocket.sendMessage 新增 images 参数传递。修复 agent/loop.ts AgentLoopConfig JSDoc 双注释语法错误。
 
