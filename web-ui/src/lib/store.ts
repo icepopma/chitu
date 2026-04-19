@@ -1,10 +1,15 @@
 import { create } from 'zustand'
-import type { Item, ThreadSummary, TurnStatus, ApprovalRequest, PlanStep } from '../types'
+import type { Item, ThreadSummary, TurnStatus, ApprovalRequest, PlanStep, User } from '../types'
 
 interface AppState {
   // 连接
   connected: boolean
   initialized: boolean
+
+  // 认证
+  user: User | null
+  token: string | null
+  isAuthenticated: boolean
 
   // 线程
   threads: ThreadSummary[]
@@ -38,11 +43,19 @@ interface AppState {
   setTurnStatus: (status: TurnStatus | 'idle') => void
   setPendingApproval: (req: ApprovalRequest | null) => void
   setCurrentPlan: (plan: PlanStep[] | null) => void
+
+  // Auth actions
+  setUser: (user: User | null) => void
+  setToken: (token: string | null) => void
+  logout: () => void
 }
 
 export const useAppStore = create<AppState>()((set) => ({
   connected: false,
   initialized: false,
+  user: null,
+  token: null,
+  isAuthenticated: false,
   threads: [],
   currentThreadId: null,
   items: [],
@@ -82,4 +95,25 @@ export const useAppStore = create<AppState>()((set) => ({
   setTurnStatus: (status) => set({ turnStatus: status }),
   setPendingApproval: (req) => set({ pendingApproval: req }),
   setCurrentPlan: (plan) => set({ currentPlan: plan }),
+
+  setUser: (user) => {
+    if (user && user.id === 'guest') {
+      localStorage.setItem('chitu_guest', JSON.stringify(user))
+    } else {
+      localStorage.removeItem('chitu_guest')
+    }
+    set({ user, isAuthenticated: !!user })
+  },
+  setToken: (token) => {
+    if (token) {
+      localStorage.setItem('chitu_token', token)
+    } else {
+      localStorage.removeItem('chitu_token')
+    }
+    set({ token })
+  },
+  logout: () => {
+    localStorage.removeItem('chitu_token')
+    set({ user: null, token: null, isAuthenticated: false })
+  },
 }))
