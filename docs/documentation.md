@@ -26,7 +26,8 @@
 - M15: ✅ 已完成（增强监控面板）
 - M16: ✅ 已完成（多 Agent 协作）
 - M17: ✅ 已完成（代码语义索引）
-- M18-M22: 待处理
+- M18: ✅ 已完成（IDE 插件 VS Code）
+- M19-M22: 待处理
 
 ### 优先级分组
 | 优先级 | 范围 | Milestones |
@@ -37,7 +38,7 @@
 | P3 生态集成 | 扩展能力边界 | M9 ✅, M10 ✅ |
 | P4 多端接入 | CLI/沙盒/容器 | M11 ✅, M12（沙盒）, M13（Docker CI） |
 | P5 高级功能 | Review/监控/多Agent | M14 ✅（Review）, M15 ✅（监控增强）, M16 ✅（多Agent） |
-| P6 远期目标 | 索引/IDE/用户/计费 | M17-M21 |
+| P6 远期目标 | 索引/IDE/用户/计费 | M17 ✅, M18 ✅, M19-M21 |
 | P7 收尾 | 文档 | M22 |
 
 ### 已完成的核心能力
@@ -112,6 +113,9 @@
 **沙盒修复（M16 期间）：**
 - 修复 macOS sandbox-exec 的 'unbound variable' 错误：将 `-p`（内联策略字符串）改为 `-f`（从文件读取策略），避免策略中的 S-expression 特殊字符被 shell 解析。降级条件简化为 `exitCode !== 0`（移除了多余的 `&& error` 检查），确保 sandbox-exec 失败时始终降级到直接执行。
 
+**VS Code 扩展：**
+- **IDE 插件**（M18）— 新增 `vscode-extension/` 目录（独立子项目）。扩展通过 WebSocket JSON-RPC 2.0 直接连接 App Server（复用现有协议，不需要 stdio 适配层）。包含 4 个核心文件：`extension.ts`（激活/停用生命周期，注册命令和配置监听）、`client.ts`（WebSocket JSON-RPC 客户端，自动重连 + 30 秒请求超时 + initialize 握手 + pending request 匹配）、`chat-provider.ts`（侧边栏 Chat WebView Provider，完整聊天 UI — 消息渲染、流式 delta 输出、工具调用显示、审批交互框）、`diff-provider.ts`（内联 diff 预览，TextDocumentContentProvider + vscode.diff 命令显示原始/修改对比）。贡献点：侧边栏 Chat 面板、4 个命令（openChat/sendSelection/showDiffPreview/newThread）、3 个快捷键（cmd+shift+c/e/n）、3 个配置项（serverUrl/autoApprove/token）。支持认证 Token 透传（URL query 参数 `?token=xxx`）。
+
 ## 本地启动
 
 ### 后端
@@ -183,6 +187,7 @@ src/
   watcher/      — 文件监听：FileWatcher + SkillsWatcher + FileChangeBuffer
   types.ts      — 核心类型（Thread/Turn/Item/AppEvent）
 web-ui/         — React 19 + Vite 8 前端（Discord 风格）
+vscode-extension/ — VS Code 扩展（侧边栏 Chat + 内联 diff + 快捷键）
 docs/           — prompt.md + implement.md + documentation.md + 架构文档
 plans.md        — 里程碑执行计划（22 个 milestones，唯一真相源）
 Dockerfile      — 多阶段 Docker 构建（deps → build → production）
@@ -230,6 +235,7 @@ CLI (readline)
 - ~~无子 Agent 派发能力（M16）~~ ✅ 已完成
 - macOS sandbox-exec -p 标志导致 'unbound variable' 错误 → ✅ 已修复（改为 -f）
 - ~~无代码语义索引，Agent 无法快速查找符号定义（M17）~~ ✅ 已完成
+- ~~无 IDE 插件支持（M18）~~ ✅ 已完成
 
 ## 设计决策记录
 
@@ -303,7 +309,14 @@ CLI (readline)
 - **为什么**：复杂任务可能需要拆分为独立子任务并行/串行执行。每个子 Agent 有独立上下文避免父 Agent 上下文过大。深度限制防止 Agent 递归 spawn 导致资源耗尽。参考 Codex `codex-rs/core/src/spawn.rs`。
 - **Trade-off**：子 Agent 当前是串行执行的，并行执行需要额外的并发控制。子 Agent 的 maxIterations 限制为 30（比主 Agent 的 10000 更严格），适合子任务但不能处理超大型任务。
 
+### M18: VS Code 扩展
+- **决策**：直接通过 WebSocket JSON-RPC 连接 App Server，不用 stdio 适配层。WebView 渲染 Chat UI（内联 HTML+CSS+JS），不引入 React/Vue 等框架。
+- **为什么**：现有 App Server 已提供完整的 WebSocket JSON-RPC 接口，扩展只需实现一个客户端即可复用全部协议。WebView 内联 HTML 比 React 框架更轻量，避免引入打包工具链。独立 tsconfig（commonjs 模块）与主项目解耦，不影响主项目编译。
+- **Trade-off**：WebView 内联 HTML 不如 React 组件化可维护，但对于 Chat UI 的复杂度足够。ws 库作为扩展运行时依赖（VS Code 扩展运行在 Node.js 环境，可以使用 ws）。
+
 ## 变更日志
+
+2026-04-19: M18 完成 — 新增 vscode-extension/ 目录（独立子项目），VS Code 扩展通过 WebSocket JSON-RPC 连接 App Server。包含 extension.ts（入口）、client.ts（JSON-RPC 客户端）、chat-provider.ts（侧边栏 Chat WebView）、diff-provider.ts（内联 diff 预览）。4 个命令、3 个快捷键、3 个配置项。
 
 2026-04-19: M17 完成 — 新增 src/indexer/ 目录（6 个文件：types.ts、symbols.ts、search.ts、indexer.ts、tool.ts、index.ts），使用 TypeScript Compiler API 构建代码符号索引。新增 src/tools/plugins/indexer/index.ts（indexerPlugin）。支持 9 种符号类型、关键词 + 驼峰拆分搜索、mtime 增量索引、懒加载。修复 indexerPlugin 的 Plugin 接口不匹配（getTools() → tools 属性）。修复沙盒降级逻辑（exit code 提取和降级检测条件改进）。
 

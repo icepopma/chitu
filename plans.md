@@ -18,7 +18,7 @@
 - [x] M15: 增强监控面板（对标 Hermes HUD）
 - [x] M16: 多 Agent 协作（子任务拆分 + 并行）
 - [x] M17: 代码语义索引（AST + Embedding 搜索）
-- [ ] M18: IDE 插件（VS Code）
+- [x] M18: IDE 插件（VS Code）
 - [ ] M19: 用户系统 + 组织 + 权限
 - [ ] M20: 用量追踪 + 计费
 - [ ] M21: 多模态支持
@@ -360,7 +360,15 @@
   - 编辑器内联 diff 预览工作
   - `npx tsc --noEmit` 通过
 - **Verification Commands**: `npx tsc --noEmit`
-- **Status**: pending
+- **Status**: completed
+- **Started**: 1776564010527
+- **Completed**: 1776564538932
+
+### Decisions
+- VS Code 扩展采用 stdio JSON-RPC 与 App Server 通信的设计需要调整：现有 App Server 使用 WebSocket JSON-RPC，而非 stdio。VS Code 扩展将直接通过 WebSocket JSON-RPC 连接 App Server（与 web-ui 相同的协议），不需要额外的 stdio 适配层。扩展结构：extension host 进程中运行一个 WebSocket 客户端连接到 localhost:8080，WebView 面板渲染 Chat UI，内联 diff 使用 vscode.TextEditorContentProvider 或 Decoration API。
+
+### Notes
+- VS Code 扩展实现完成。新增 vscode-extension/ 目录（6 个文件）：package.json（扩展清单，含侧边栏 Chat 视图注册、4 个命令、3 个快捷键、3 个配置项）、tsconfig.json（commonjs 模块，独立编译）、src/extension.ts（扩展入口，激活/停用生命周期）、src/client.ts（WebSocket JSON-RPC 2.0 客户端，自动重连+超时+initialize 握手）、src/chat-provider.ts（Chat WebView Provider，完整聊天 UI 含消息渲染/流式输出/工具调用显示/审批框）、src/diff-provider.ts（内联 diff 预览，TextDocumentContentProvider + vscode.diff 命令）、resources/icon.svg。扩展直接通过 WebSocket 连接 App Server（ws://localhost:8080），复用现有 JSON-RPC 协议，无需 stdio 适配层。
 
 ## M19: 用户系统 + 组织 + 权限
 - **Scope**: 用户注册/登录（邮箱 / GitHub OAuth）。组织概念 — 多人共享工作空间。角色：Owner / Admin / Member / Viewer。每个 Thread 归属一个用户。

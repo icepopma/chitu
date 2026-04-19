@@ -1,0 +1,109 @@
+{
+  "name": "chitu-vscode",
+  "displayName": "赤兔 (Chitu) - AI Coding Agent",
+  "description": "AI 编程助手 VS Code 扩展，侧边栏 Chat 面板 + 内联 diff 预览",
+  "version": "0.1.0",
+  "publisher": "chitu",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Chat",
+    "Programming Languages",
+    "Machine Learning"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "chitu-sidebar",
+          "title": "赤兔 Chat",
+          "icon": "resources/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "chitu-sidebar": [
+        {
+          "type": "webview",
+          "id": "chitu.chatView",
+          "name": "Chat"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "chitu.openChat",
+        "title": "赤兔: 打开 Chat 面板"
+      },
+      {
+        "command": "chitu.sendSelection",
+        "title": "赤兔: 发送选中代码到 Chat"
+      },
+      {
+        "command": "chitu.showDiffPreview",
+        "title": "赤兔: 显示 Diff 预览"
+      },
+      {
+        "command": "chitu.newThread",
+        "title": "赤兔: 新建对话"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "chitu.openChat",
+        "key": "ctrl+shift+c",
+        "mac": "cmd+shift+c"
+      },
+      {
+        "command": "chitu.sendSelection",
+        "key": "ctrl+shift+e",
+        "mac": "cmd+shift+e"
+      },
+      {
+        "command": "chitu.newThread",
+        "key": "ctrl+shift+n",
+        "mac": "cmd+shift+n"
+      }
+    ],
+    "configuration": {
+      "title": "赤兔 (Chitu)",
+      "properties": {
+        "chitu.serverUrl": {
+          "type": "string",
+          "default": "ws://localhost:8080",
+          "description": "赤兔 App Server WebSocket 地址"
+        },
+        "chitu.autoApprove": {
+          "type": "boolean",
+          "default": false,
+          "description": "自动审批模式（跳过确认）"
+        },
+        "chitu.token": {
+          "type": "string",
+          "default": "",
+          "description": "认证 Token（API Key 或 JWT）"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts"
+  },
+  "dependencies": {
+    "ws": "^8.20.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.85.0",
+    "@types/ws": "^8.18.1",
+    "typescript": "^5.8.0"
+  }
+}
