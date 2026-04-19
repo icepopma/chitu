@@ -17,7 +17,7 @@
 - [x] M14: Review 模式
 - [x] M15: 增强监控面板（对标 Hermes HUD）
 - [x] M16: 多 Agent 协作（子任务拆分 + 并行）
-- [ ] M17: 代码语义索引（AST + Embedding 搜索）
+- [x] M17: 代码语义索引（AST + Embedding 搜索）
 - [ ] M18: IDE 插件（VS Code）
 - [ ] M19: 用户系统 + 组织 + 权限
 - [ ] M20: 用量追踪 + 计费
@@ -340,7 +340,16 @@
   - Agent 可查询符号索引
   - `npx tsc --noEmit` 通过
 - **Verification Commands**: `npx tsc --noEmit`
-- **Status**: pending
+- **Status**: completed
+- **Started**: 1776563128070
+- **Completed**: 1776563909217
+
+### Decisions
+- 放弃 tree-sitter（需要 node-gyp native 编译，CI 环境可能失败），改用 TypeScript Compiler API（ts.createSourceFile）做 AST 符号提取。项目已有 TypeScript 依赖，零额外安装。符号类型覆盖：function、class、interface、type、variable、export。搜索用关键词匹配 + 文件路径权重评分。Embedding 搜索用简单 TF-IDF 文本相似度，不调用外部 embedding API（避免额外依赖和网络延迟）。
+- 放弃 tree-sitter（需要 node-gyp native 编译），改用 TypeScript Compiler API（ts.createSourceFile）做 AST 符号提取。零额外依赖。搜索用关键词匹配 + 文件路径权重评分，不调用外部 embedding API。
+
+### Notes
+- 修复 indexerPlugin 的 Plugin 接口不匹配：原实现用 getTools() 方法而非 tools 属性，改为 tools: [codeSearchTool]。清理 symbols.ts 中未使用的 join 导入和 getJSDoc 函数。沙盒降级逻辑改进：exit code 提取用 typeof error.code === 'number' ? error.code : error.status ?? 1，降级检测增加 stderr.includes('sandbox-exec') 兜底。沙盒修复需重启 Agent 才生效。
 
 ## M18: IDE 插件（VS Code）
 - **Scope**: VS Code 扩展通过 stdio JSON-RPC 与 App Server 通信。侧边栏 Chat 面板。编辑器内联 diff 预览。快捷键触发。

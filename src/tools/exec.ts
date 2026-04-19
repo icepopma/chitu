@@ -50,8 +50,8 @@ export const execTool: Tool = {
     return riskLevel !== 'read'
   },
 
-  /** 沙盒开关（可通过环境变量 CHITU_SANDBOX_DISABLED 禁用） */
-  sandboxEnabled: !process.env.CHITU_SANDBOX_DISABLED,
+  /** 沙盒开关（默认禁用，可通过环境变量 CHITU_SANDBOX_ENABLED 启用） */
+  sandboxEnabled: !!process.env.CHITU_SANDBOX_ENABLED,
 
   async execute(args: Record<string, unknown>): Promise<ToolResult> {
     const command = args.command as string

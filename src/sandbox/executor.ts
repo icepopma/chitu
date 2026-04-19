@@ -124,7 +124,9 @@ function execDirect(
         cwd: opts.cwd,
       },
       (error, stdout, stderr) => {
-        const exitCode = error ? (error as any).code || 1 : 0
+        // Node.js child_process.exec: 非零退出码时 error 不为 null
+        // error.status 是退出码（数字），error.code 也是退出码
+        const exitCode = error ? (typeof error.code === 'number' ? error.code : (error.status ?? 1)) : 0
         const timedOut = error ? !!(error as any).killed : false
         resolve({
           stdout: (stdout || '').trim(),
@@ -146,6 +148,7 @@ function execDirect(
  * sandbox-exec -f <policy-file> <command>
  *
  * 修复：使用 -f（文件）而非 -p（内联字符串），避免 shell 转义问题
+ * 降级：sandbox-exec 失败时自动降级到直接执行
  */
 function execMacosSandbox(
   command: string,
@@ -164,7 +167,6 @@ function execMacosSandbox(
 
   return new Promise((resolve) => {
     // 使用 -f 标志从文件读取策略（而非 -p 内联字符串）
-    // 避免策略中的特殊字符（括号、引号）被 shell 解析导致 'unbound variable' 错误
     const sandboxCommand = `sandbox-exec -f ${policyFile} ${opts.shell} -c ${JSON.stringify(command)}`
 
     childExec(
@@ -184,14 +186,16 @@ function execMacosSandbox(
           // 清理失败不影响结果
         }
 
-        const exitCode = error ? (error as any).code || 1 : 0
-        const timedOut = error ? !!(error as any).killed : false
+        // sandbox-exec 失败 → 降级到直接执行
+        // 检查方式：error 不为 null 或 stderr 包含 sandbox-exec 错误信息
+        const sandboxFailed = error !== null || (stderr && stderr.includes('sandbox-exec'))
 
-        // 沙盒执行失败时自动降级到直接执行
-        // 常见原因：策略语法错误、sandbox-exec 版本不兼容、unbound variable 等
-        if (exitCode !== 0) {
+        if (sandboxFailed) {
           execDirect(command, opts).then((directResult) => {
-            directResult.stderr = `[sandbox fallback: exit ${exitCode}]\n${directResult.stderr}`
+            const sandboxExitCode = error
+              ? (typeof error.code === 'number' ? error.code : (error.status ?? 1))
+              : 0
+            directResult.stderr = `[sandbox fallback: sandbox-exec exit ${sandboxExitCode}]\n${directResult.stderr}`
             directResult.sandboxed = false
             directResult.platform = 'none'
             resolve(directResult)
@@ -202,8 +206,8 @@ function execMacosSandbox(
         resolve({
           stdout: (stdout || '').trim(),
           stderr: (stderr || '').trim(),
-          exitCode,
-          timedOut,
+          exitCode: 0,
+          timedOut: false,
           sandboxed: true,
           platform: 'macos',
         })

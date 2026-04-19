@@ -45,6 +45,7 @@ import { filesPlugin } from './plugins/files/index.js'
 import { planPlugin } from './plugins/plan/index.js'
 import { milestonePlugin } from './plugins/milestone/index.js'
 import { gitPlugin } from './plugins/git/index.js'
+import { indexerPlugin } from './plugins/indexer/index.js'
 
 class ToolRegistry {
   private tools: Map<string, Tool> = new Map()
@@ -143,6 +144,7 @@ export function createToolRegistry(): ToolRegistry {
   loader.register(planPlugin)
   loader.register(milestonePlugin)
   loader.register(gitPlugin)
+  loader.register(indexerPlugin)
 
   return new ToolRegistry(loader)
 }
@@ -161,6 +163,7 @@ export async function createToolRegistryAsync(projectRoot?: string): Promise<Too
   loader.register(planPlugin)
   loader.register(milestonePlugin)
   loader.register(gitPlugin)
+  loader.register(indexerPlugin)
 
   await loader.loadAll()
 

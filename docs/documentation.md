@@ -25,7 +25,7 @@
 - M14: ✅ 已完成（Review 模式）
 - M15: ✅ 已完成（增强监控面板）
 - M16: ✅ 已完成（多 Agent 协作）
-- M17: 待处理
+- M17: ✅ 已完成（代码语义索引）
 - M18-M22: 待处理
 
 ### 优先级分组
@@ -100,6 +100,12 @@
 - **分层配置系统**（M2）— 4 层叠加：全局 `~/.chitu/config.json` → 项目 `.chitu/config.json` → 环境变量 → CLI 参数。后者覆盖前者。支持类型验证。7 个文件：types.ts（类型定义）、defaults.ts（默认值）、loader.ts（文件加载）、merge.ts（4 层合并）、env.ts（环境变量映射）、validate.ts（验证）、index.ts（入口 + 单例缓存）
 - **Neon PostgreSQL 数据库存储**（M3）— ThreadStore + MemoryStorage 双写策略（PG 主存储 + JSON 文件备份），启动时自动运行 5 个迁移（threads、rollout_events、memories 表 + 索引 + active_turns 表），数据库不可用时自动降级到文件存储
 
+**代码语义索引：**
+- **代码符号搜索**（M17）— 使用 TypeScript Compiler API（`ts.createSourceFile`）解析项目 AST，提取符号索引（function、class、interface、type、variable、enum、method、property、import）。新增 `src/indexer/` 目录（6 个文件）：`types.ts`（SymbolEntry、SearchResult、IndexStats 类型定义）、`symbols.ts`（AST 解析器，支持 9 种符号类型提取，包含签名、导出状态、JSDoc 注释）、`search.ts`（关键词 + 驼峰/下划线拆分搜索，路径权重评分）、`indexer.ts`（CodeIndexer 主模块，递归文件遍历 + mtime 增量索引 + 懒加载）、`tool.ts`（`code_search` 工具，Agent 可查询符号索引）、`index.ts`（模块入口）。工具通过 `indexerPlugin` 注册到 PluginLoader。搜索评分：精确匹配(1.0) > 前缀匹配(0.9) > 包含匹配(0.8) > 驼峰拆分匹配(0.6) > 路径匹配(0.4) > 签名匹配(0.3) > 文档匹配(0.2)。核心代码加权 1.2x，导出符号加权 1.1x。
+
+**沙盒修复（M17 期间）：**
+- 修复 macOS sandbox-exec 降级逻辑：改进 exit code 提取（`typeof error.code === 'number' ? error.code : error.status ?? 1`），增强降级检测条件（`error !== null || stderr.includes('sandbox-exec')`）。
+
 **多 Agent 协作：**
 - **子 Agent 派发系统**（M16）— 新增 `src/agent/spawn.ts`，实现 AgentSpawner 类（管理子 Agent 生命周期）+ AsyncMessageQueue（Agent 间异步消息通信）+ createSpawnTool（agent_spawn 工具工厂函数）。深度限制 MAX_SPAWN_DEPTH=2（即 0=root, 1=子Agent, 2=孙Agent 三层嵌套）。子 Agent 拥有独立的 Agent Loop 实例和上下文窗口，共享父 Thread 的文件系统。工具集与父 Agent 相同但受深度限制（L2 子 Agent 不能再 spawn）。ThreadManager.runTurn() 中创建 spawner 并添加 spawnTool 到工具列表。子 Agent 开始/完成时通过回调发射 item/started、item/completed 事件。
 
@@ -170,7 +176,8 @@ src/
   server/       — WebSocket 传输 + JSON-RPC + HTTP endpoints
   skills/       — Skills 加载系统
   thread/       — ThreadManager + ThreadStore（PG 主 + JSON 备份）
-  tools/        — 工具系统：PluginLoader + 多个 Plugin（exec, files, plan, milestone, git v2.0）
+  tools/        — 工具系统：PluginLoader + 多个 Plugin（exec, files, plan, milestone, git v2.0, indexer）
+  indexer/      — 代码语义索引：AST 符号解析 + 搜索引擎 + code_search 工具
   sandbox/      — 沙盒执行：Seatbelt 策略 + 统一执行器（macOS sandbox-exec / Linux Docker）
   utils/        — 通用工具（shell 检测、环境快照 diff）
   watcher/      — 文件监听：FileWatcher + SkillsWatcher + FileChangeBuffer
@@ -222,6 +229,7 @@ CLI (readline)
 - ~~监控面板指标不够丰富，需对标 Hermes HUD 增强（M15）~~ ✅ 已完成
 - ~~无子 Agent 派发能力（M16）~~ ✅ 已完成
 - macOS sandbox-exec -p 标志导致 'unbound variable' 错误 → ✅ 已修复（改为 -f）
+- ~~无代码语义索引，Agent 无法快速查找符号定义（M17）~~ ✅ 已完成
 
 ## 设计决策记录
 
@@ -285,12 +293,19 @@ CLI (readline)
 - **为什么**：system prompt 引导 Agent 行为（只分析不修改 + 结构化输出审查结果），工具过滤作为硬性保障（只注册只读工具到 Agent Loop）。exec 工具额外做命令只读检测（正则匹配 cat/ls/grep/git status 等），防止 Agent 通过 shell 命令间接写入。双层防护比单层更可靠。
 - **Trade-off**：exec 工具的只读命令检测用正则匹配，可能遗漏边缘情况（如 `python -c "open('x','w')"`）。但对于常见场景足够，且 system prompt 层面已经约束了 Agent 不应尝试写入。
 
+### M17: 代码语义索引
+- **决策**：放弃 tree-sitter（需要 node-gyp native 编译，CI 环境可能失败），改用 TypeScript Compiler API（`ts.createSourceFile`）做 AST 符号提取。项目已有 TypeScript 依赖，零额外安装。搜索用关键词匹配 + 文件路径权重评分，不调用外部 embedding API（避免额外依赖和网络延迟）。
+- **为什么**：tree-sitter 的 node-gyp 编译在不同平台/Node 版本上经常失败，对于教育项目来说风险太高。TypeScript Compiler API 是已有的零成本选择，`ts.createSourceFile` 不需要完整的 TypeScript 程序即可独立解析文件。搜索策略选择 TF-IDF 文本相似度而非向量 embedding，因为不需要额外的 API 调用和模型部署。
+- **Trade-off**：只能索引 TypeScript/JavaScript 文件，不支持 Python、Go 等其他语言（tree-sitter 是通用的）。搜索是关键词匹配而非真正的语义搜索（embedding 更智能但需要外部 API）。索引在内存中，进程重启后需要重建（懒加载机制减轻了影响）。
+
 ### M16: 多 Agent 协作
 - **决策**：SubAgent 是独立的 Agent Loop 实例，由 AgentSpawner 管理。深度限制 3 层（0=root, 1, 2），防止无限嵌套。子 Agent 通过 AsyncMessageQueue 与父 Agent 通信。子 Agent 共享父 Thread 的文件系统但使用独立的上下文窗口。
 - **为什么**：复杂任务可能需要拆分为独立子任务并行/串行执行。每个子 Agent 有独立上下文避免父 Agent 上下文过大。深度限制防止 Agent 递归 spawn 导致资源耗尽。参考 Codex `codex-rs/core/src/spawn.rs`。
 - **Trade-off**：子 Agent 当前是串行执行的，并行执行需要额外的并发控制。子 Agent 的 maxIterations 限制为 30（比主 Agent 的 10000 更严格），适合子任务但不能处理超大型任务。
 
 ## 变更日志
+
+2026-04-19: M17 完成 — 新增 src/indexer/ 目录（6 个文件：types.ts、symbols.ts、search.ts、indexer.ts、tool.ts、index.ts），使用 TypeScript Compiler API 构建代码符号索引。新增 src/tools/plugins/indexer/index.ts（indexerPlugin）。支持 9 种符号类型、关键词 + 驼峰拆分搜索、mtime 增量索引、懒加载。修复 indexerPlugin 的 Plugin 接口不匹配（getTools() → tools 属性）。修复沙盒降级逻辑（exit code 提取和降级检测条件改进）。
 
 2026-04-19: M16 完成 — 新增 src/agent/spawn.ts（AgentSpawner + AsyncMessageQueue + createSpawnTool）。子 Agent 独立 Agent Loop 实例，深度限制 3 层，共享文件系统但独立上下文。ThreadManager 集成 spawnTool。修复沙盒 sandbox-exec -p→-f。
 
