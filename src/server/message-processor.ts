@@ -283,6 +283,8 @@ export class MessageProcessor {
     const message = params?.message as string
     const autoApprove = params?.autoApprove as boolean
     const mode = params?.mode as 'default' | 'review' | undefined
+    /** M21: 多模态 — 图片路径列表 */
+    const images = params?.images as string[] | undefined
 
     if (!threadId || !message) {
       this.send(ws, createError(id, INVALID_PARAMS, 'Missing threadId or message'))
@@ -312,6 +314,7 @@ export class MessageProcessor {
       signal: controller.signal,
       onApprovalNeeded: approvalCallback,
       mode,
+      images,
     }).catch((err) => {
       // runTurn 内部已处理错误（emit turn/completed with failed）
       // 这里只清理 AbortController

@@ -58,6 +58,8 @@ export interface RunTurnOptions {
   hookDispatcher?: HookDispatcher
   /** M14: 运行模式 — 'default'（正常）或 'review'（只审查不修改） */
   mode?: 'default' | 'review'
+  /** M21: 多模态 — 用户上传的图片路径列表 */
+  images?: string[]
 }
 
 /** runTurn 的返回结果 */
@@ -334,6 +336,8 @@ export class ThreadManager {
       type: 'user_message',
       status: 'completed',
       content: effectiveInput,
+      /** M21: 多模态 — 关联图片 */
+      images: options?.images && options.images.length > 0 ? options.images : undefined,
       startedAt: Date.now(),
       completedAt: Date.now(),
     })
@@ -431,6 +435,21 @@ export class ThreadManager {
       streamingItemId = null
     }
 
+    // M21: 多模态 — 构建多模态内容（图片 + 文字）
+    const multimodalContent = options?.images && options.images.length > 0
+      ? [
+          ...(effectiveInput ? [{ type: 'text' as const, text: effectiveInput }] : []),
+          ...options.images.map(imgPath => ({
+            type: 'image_url' as const,
+            image_url: {
+              url: imgPath.startsWith('http')
+                ? imgPath
+                : `http://localhost:${process.env.PORT || 8080}${imgPath}`,
+            },
+          })),
+        ]
+      : undefined
+
     try {
       agentResult = await runAgentLoop(effectiveInput, {
         client,
@@ -442,6 +461,7 @@ export class ThreadManager {
         hookDispatcher: dispatcher,
         envDelta,
         fileChangeBuffer: this.fileChangeBuffer,
+        multimodalContent,
         onStreamDelta: (itemId, delta) => {
           if (!streamingItemId) {
             streamingItemId = itemId
@@ -684,14 +704,30 @@ export class ThreadManager {
   }
 
   /** 从 Thread 的 Items 重建对话历史（给 Agent Loop 用） */
-  private buildMessages(thread: Thread): Array<{ role: string; content: string }> {
-    const messages: Array<{ role: string; content: string }> = []
+  private buildMessages(thread: Thread): Array<{ role: string; content: string | import('../llm/client.js').ContentPart[] }> {
+    const messages: Array<{ role: string; content: string | import('../llm/client.js').ContentPart[] }> = []
 
     for (const item of thread.items) {
       switch (item.type) {
-        case 'user_message':
-          messages.push({ role: 'user', content: item.content })
+        case 'user_message': {
+          // M21: 多模态 — 如果有图片，构建 ContentPart[] 消息
+          if (item.images && item.images.length > 0) {
+            const parts: import('../llm/client.js').ContentPart[] = []
+            if (item.content) {
+              parts.push({ type: 'text', text: item.content })
+            }
+            for (const imgPath of item.images) {
+              const imageUrl = imgPath.startsWith('http')
+                ? imgPath
+                : `http://localhost:${process.env.PORT || 8080}${imgPath}`
+              parts.push({ type: 'image_url', image_url: { url: imageUrl } })
+            }
+            messages.push({ role: 'user', content: parts })
+          } else {
+            messages.push({ role: 'user', content: item.content })
+          }
           break
+        }
         case 'assistant_message':
           messages.push({ role: 'assistant', content: item.content })
           break

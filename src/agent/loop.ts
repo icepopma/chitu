@@ -379,6 +379,12 @@ export interface AgentLoopConfig {
    */
   fileChangeBuffer?: FileChangeBuffer
   /**
+   * M21: 多模态 — 替换最终用户消息的 content
+   * 当存在时，替换 buildInitialMessages 末尾用户消息的纯文本 content
+   * 用于将附带图片的用户消息正确传给 LLM
+   */
+  multimodalContent?: import('../llm/client.js').ContentPart[]
+  /**
    * v13.9: 环境差异 — 回合间只注入变化的字段
    * - undefined（默认）: 注入完整环境上下文
    * - EnvDiff: 只注入变化的字段
@@ -553,7 +559,19 @@ export async function runAgentLoop(
   const memoryText = allMemories.length > 0 ? memoryStorage.formatForInjection(allMemories) : null
   // v16: 里程碑上下文预加载
   const milestoneText = loadMilestoneContextText()
+
   const messages = buildInitialMessages(task, systemPrompt, envDelta, memoryText, milestoneText)
+
+  // M21: 多模态 — 用 multimodal content 替换最后一条用户消息
+  if (config.multimodalContent) {
+    const lastUserIdx = messages.findLastIndex(m => m.role === 'user')
+    if (lastUserIdx !== -1) {
+      messages[lastUserIdx] = {
+        ...messages[lastUserIdx],
+        content: config.multimodalContent,
+      }
+    }
+  }
 
   let totalTokens = 0
 

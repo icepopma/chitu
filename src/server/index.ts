@@ -25,6 +25,7 @@ import { logger } from '../monitoring/logger.js'
 import { FileWatcher, FileChangeBuffer, SkillsWatcher } from '../watcher/index.js'
 import { authenticateConnection, extractTokenFromRequest } from '../auth/index.js'
 import { buildAnalytics } from './dashboard-analytics.js'
+import { registerUploadHandler, ensureUploadDir } from '../upload/index.js'
 
 export interface AppServerOptions {
   port?: number
@@ -39,15 +40,22 @@ export function createAppServer(options?: AppServerOptions) {
 
   // HTTP server for /status, /dashboard endpoints + WebSocket upgrade
   const projectRoot = process.cwd()
+
+  // M21: 确保上传目录存在
+  ensureUploadDir(projectRoot)
+
   const httpServer = createServer((req, res) => {
     // CORS headers for dashboard access from frontend dev server
     res.setHeader('Access-Control-Allow-Origin', '*')
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
     if (req.method === 'OPTIONS') {
       res.writeHead(204)
       res.end()
       return
     }
+
+    // M21: 图片上传 + 静态文件服务
+    if (registerUploadHandler(req, res, projectRoot)) return
 
     if (req.url?.startsWith('/status')) {
       res.writeHead(200, { 'Content-Type': 'application/json' })

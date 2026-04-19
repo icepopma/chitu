@@ -16,6 +16,8 @@ export interface Item {
   toolArgs?: Record<string, unknown>
   toolCallId?: string
   isError?: boolean
+  /** M21: 多模态 — 关联的图片路径列表 */
+  images?: string[]
   startedAt: number
   completedAt?: number
 }

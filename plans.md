@@ -21,7 +21,7 @@
 - [x] M18: IDE 插件（VS Code）
 - [x] M19: 用户系统 + 组织 + 权限
 - [x] M20: 用量追踪 + 计费
-- [ ] M21: 多模态支持
+- [x] M21: 多模态支持
 - [ ] M22: Documentation + Final Verification
 
 ## M1: LLM API 可靠性（重试 + 降级）
@@ -410,7 +410,9 @@
   - Agent 能理解图片内容
   - `npx tsc --noEmit` 通过
 - **Verification Commands**: `npx tsc --noEmit`
-- **Status**: pending
+- **Status**: completed
+- **Started**: 1776566349231
+- **Completed**: 1776567543932
 
 ## M22: Documentation + Final Verification
 - **Scope**: 所有里程碑完成后的最终文档更新。更新 README.md 反映完整功能集。更新 CLAUDE.md 反映新架构（数据库、配置、认证、MCP 等）。写 docs/architecture.md 描述完整系统架构（数据模型、Agent Loop、工具插件、事件协议、MCP、认证）。确保所有 npm scripts 可用且通过验证。参考 Design Desk Milestone 24。

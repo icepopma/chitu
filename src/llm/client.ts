@@ -14,10 +14,15 @@
 
 // ===== 类型定义 =====
 
+/** 多模态内容部分 — 支持 text + image_url */
+export type ContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string; detail?: 'low' | 'high' | 'auto' } }
+
 /** 一条消息，发给 LLM 或从 LLM 收到 */
 export interface Message {
   role: 'system' | 'user' | 'assistant' | 'tool'
-  content: string | null
+  content: string | ContentPart[] | null
   /** tool_calls：当模型想调用工具时，这个字段会有值 */
   tool_calls?: ToolCall[]
   /** tool_call_id：当这条消息是工具执行结果时，标识对应哪个工具调用 */

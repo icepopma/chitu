@@ -59,6 +59,8 @@ export interface Item {
   toolCallId?: string
   isError?: boolean
   exitCode?: number    // 工具退出码（0=成功，非0=失败）
+  /** M21: 多模态 — 图片附件（URL 或服务器相对路径） */
+  images?: string[]
   // 时间戳
   startedAt: number
   completedAt?: number

@@ -29,7 +29,8 @@
 - M18: ✅ 已完成（IDE 插件 VS Code）
 - M19: ✅ 已完成（用户系统 + 组织 + 权限）
 - M20: ✅ 已完成（用量追踪 + 计费）
-- M21-M22: 待处理
+- M21: ✅ 已完成（多模态支持）
+- M22: 待处理
 
 ### 优先级分组
 | 优先级 | 范围 | Milestones |
@@ -40,7 +41,7 @@
 | P3 生态集成 | 扩展能力边界 | M9 ✅, M10 ✅ |
 | P4 多端接入 | CLI/沙盒/容器 | M11 ✅, M12（沙盒）, M13（Docker CI） |
 | P5 高级功能 | Review/监控/多Agent | M14 ✅（Review）, M15 ✅（监控增强）, M16 ✅（多Agent） |
-| P6 远期目标 | 索引/IDE/用户/计费 | M17 ✅, M18 ✅, M19-M21 |
+| P6 远期目标 | 索引/IDE/用户/计费/多模态 | M17 ✅, M18 ✅, M19 ✅, M20 ✅, M21 ✅ |
 | P7 收尾 | 文档 | M22 |
 
 ### 已完成的核心能力
@@ -333,7 +334,14 @@ CLI (readline)
 - **为什么**：异步记录用量避免增加 turn 延迟。配额检查同步执行确保超限请求在消耗资源前被拒绝。SQL 聚合查询（SUM + date_trunc + GROUP BY）利用数据库能力做统计，避免在应用层维护计数器。套餐定义用代码常量而非数据库表，减少一次查询。
 - **Trade-off**：用量查询用 `sql.unsafe()` 进行动态列名查询（tagged template 不支持动态列名），有 SQL 注入风险但参数是内部生成的 scope/user 值，非用户输入。当月用量实时聚合查询在高数据量时可能变慢，未来可考虑缓存或预聚合。
 
+### M21: 多模态支持
+- **决策**：图片上传使用独立 HTTP POST endpoint（而非通过 WebSocket 传输 base64），前端先上传图片获取服务器路径，再在 `turn/start` 时传递路径列表。LLM 调用时将图片路径转为 `image_url` ContentPart，构建多模态消息。前端使用本地 `URL.createObjectURL` 做即时预览，发送成功后释放。
+- **为什么**：WebSocket 传输 base64 图片会阻塞 JSON-RPC 通道（大图片可达数 MB）。HTTP 上传是标准做法，支持流式传输和进度显示。服务器已有静态文件服务（`/uploads/*`），图片路径直接复用。`ContentPart[]` 类型已在 `llm/client.ts` 中定义（对齐 OpenAI multimodal API），后端只需在 Agent Loop 中替换最后一条用户消息的 content 即可。
+- **Trade-off**：上传需要额外 HTTP 请求（与 WebSocket 通道分离），但避免了 WebSocket 消息体积问题。图片目前只在用户消息中展示，Assistant 回复中的图表生成（Mermaid/PlantUML）留给后续 milestone。前端限制最多 5 张图片、单张最大 10MB，防止滥用。
+
 ## 变更日志
+
+2026-04-19: M21 完成 — 多模态支持。后端基础设施已存在（Item.images 字段、ContentPart 类型、multimodalContent 配置、upload 模块）。前端新增：ChatInput 图片上传按钮 + 粘贴图片 + 预览条（最多 5 张，10MB 限制，上传中 spinner）、MessageItem 内嵌 MessageImages 组件（缩略图 + 点击大图查看）、useChituSocket.sendMessage 新增 images 参数传递。修复 agent/loop.ts AgentLoopConfig JSDoc 双注释语法错误。
 
 2026-04-19: M20 完成 — 用量追踪 + 计费。新增 `src/monitoring/usage.ts`（recordUsage + getUserUsage + getOrgUsage + getCurrentMonthUsage）、`src/monitoring/quota.ts`（checkQuota + setQuotaConfig + getQuotaConfig + 套餐定义）、`src/server/usage-handlers.ts`（5 个 JSON-RPC handler）。ThreadManager.runTurn() 集成：turn 前配额检查 + turn 后异步记录用量。数据库迁移 009（usage_logs）+ 010（quotas）。JSON-RPC 新增 usage/get、quota/check、quota/set、quota/get、quota/plans。
 

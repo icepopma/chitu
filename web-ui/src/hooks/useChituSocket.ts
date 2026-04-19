@@ -217,7 +217,7 @@ export function useChituSocket(options?: { url?: string }) {
     }
   }, [selectThread, setItems, setCurrentPlan])
 
-  const sendMessage = useCallback(async (message: string, autoApprove?: boolean, mode?: 'default' | 'review') => {
+  const sendMessage = useCallback(async (message: string, autoApprove?: boolean, mode?: 'default' | 'review', images?: string[]) => {
     const threadId = currentThreadIdRef.current
     if (!threadId) throw new Error('没有选中的线程')
 
@@ -225,7 +225,7 @@ export function useChituSocket(options?: { url?: string }) {
     clearItems()
     setCurrentPlan(null)
     setTurnStatus('in_progress')
-    await sendRequest('turn/start', { threadId, message, autoApprove, mode })
+    await sendRequest('turn/start', { threadId, message, autoApprove, mode, images: images && images.length > 0 ? images : undefined })
   }, [clearItems, setCurrentPlan, setTurnStatus])
 
   const deleteThread = useCallback(async (threadId: string) => {

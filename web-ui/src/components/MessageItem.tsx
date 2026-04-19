@@ -1,7 +1,41 @@
 import type { Item } from '../types'
 import { ToolCallItem } from './ToolCallItem'
 import { User, Bot } from 'lucide-react'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
+
+const IMAGE_BASE = 'http://localhost:8080'
+
+/** 消息内嵌图片预览 */
+function MessageImages({ images }: { images: string[] }) {
+  const [expanded, setExpanded] = useState<string | null>(null)
+
+  const urls = images.map(p => p.startsWith('http') ? p : `${IMAGE_BASE}${p}`)
+
+  return (
+    <>
+      <div className="flex gap-2 mt-1.5 flex-wrap">
+        {urls.map((url, i) => (
+          <img
+            key={i}
+            src={url}
+            alt={`图片 ${i + 1}`}
+            className="max-w-[200px] max-h-[200px] object-cover rounded-lg border border-[#3a3a3a] cursor-pointer hover:opacity-80 transition-opacity"
+            onClick={() => setExpanded(url)}
+          />
+        ))}
+      </div>
+      {/* 大图查看 */}
+      {expanded && (
+        <div
+          className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center"
+          onClick={() => setExpanded(null)}
+        >
+          <img src={expanded} alt="大图" className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg" />
+        </div>
+      )}
+    </>
+  )
+}
 
 function groupItems(items: Item[]) {
   const groups: Array<{ type: 'user' | 'assistant'; message: Item; tools: Array<{ call: Item; result?: Item }> }> = []
@@ -50,6 +84,10 @@ export function MessageItem({ items }: { items: Item[] }) {
                 <div className="text-sm text-[#ddd] mt-0.5 whitespace-pre-wrap">
                   {group.message.content}
                 </div>
+                {/* M21: 多模态 — 用户上传的图片 */}
+                {group.message.images && group.message.images.length > 0 && (
+                  <MessageImages images={group.message.images} />
+                )}
               </div>
             </div>
           ) : (
