@@ -31,6 +31,13 @@ import {
   getUserRole,
 } from './user-handlers.js'
 import {
+  handleGetUsage,
+  handleCheckQuota,
+  handleSetQuota,
+  handleGetQuota,
+  handleListPlans,
+} from './usage-handlers.js'
+import {
   type JsonRpcRequest,
   createResponse,
   createError,
@@ -160,6 +167,17 @@ export class MessageProcessor {
           return await this.handleOrgMembers(ws, reqId, params)
         case 'org/role':
           return await this.handleOrgRole(ws, reqId, params)
+        // M20: 用量追踪 + 配额
+        case 'usage/get':
+          return await this.handleUsageGet(ws, reqId, params)
+        case 'quota/check':
+          return await this.handleQuotaCheck(ws, reqId, params)
+        case 'quota/set':
+          return await this.handleQuotaSet(ws, reqId, params)
+        case 'quota/get':
+          return await this.handleQuotaGet(ws, reqId, params)
+        case 'quota/plans':
+          return await this.handleQuotaPlans(ws, reqId)
         default:
           this.send(ws, createError(reqId, METHOD_NOT_FOUND, `Method not found: ${method}`))
       }
@@ -451,6 +469,33 @@ export class MessageProcessor {
 
   private async handleOrgRole(ws: WebSocket, id: number | string, params?: Record<string, unknown>): Promise<void> {
     const result = await getUserRole(params || {})
+    this.send(ws, createResponse(id, result))
+  }
+
+  // ===== M20: 用量追踪 + 配额路由 =====
+
+  private async handleUsageGet(ws: WebSocket, id: number | string, params?: Record<string, unknown>): Promise<void> {
+    const result = await handleGetUsage(params || {})
+    this.send(ws, createResponse(id, result))
+  }
+
+  private async handleQuotaCheck(ws: WebSocket, id: number | string, params?: Record<string, unknown>): Promise<void> {
+    const result = await handleCheckQuota(params || {})
+    this.send(ws, createResponse(id, result))
+  }
+
+  private async handleQuotaSet(ws: WebSocket, id: number | string, params?: Record<string, unknown>): Promise<void> {
+    const result = await handleSetQuota(params || {})
+    this.send(ws, createResponse(id, { quota: result }))
+  }
+
+  private async handleQuotaGet(ws: WebSocket, id: number | string, params?: Record<string, unknown>): Promise<void> {
+    const result = await handleGetQuota(params || {})
+    this.send(ws, createResponse(id, result))
+  }
+
+  private async handleQuotaPlans(ws: WebSocket, id: number | string): Promise<void> {
+    const result = await handleListPlans()
     this.send(ws, createResponse(id, result))
   }
 

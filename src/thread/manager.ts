@@ -25,6 +25,8 @@ import { HookDispatcher } from '../hooks/dispatcher.js'
 import { recordTurnStart, recordTurnComplete, updateTurnEnvSnapshot, getLatestEnvSnapshot } from '../db/crash-recovery.js'
 import { isDbAvailable } from '../db/connection.js'
 import { chituMetrics } from '../monitoring/metrics.js'
+import { recordUsage } from '../monitoring/usage.js'
+import { checkQuota } from '../monitoring/quota.js'
 import type { FileChangeBuffer } from '../watcher/file-change-buffer.js'
 import { loadMilestonePlan } from '../tools/milestone-plan/parser.js'
 import { AgentSpawner, createSpawnTool, MAX_SPAWN_DEPTH } from '../agent/spawn.js'
@@ -279,6 +281,16 @@ export class ThreadManager {
     const thread = await this.store.load(threadId)
     if (!thread) throw new Error(`线程 ${threadId} 不存在`)
     if (thread.status === 'archived') throw new Error(`线程 ${threadId} 已归档`)
+
+    // M20: 配额检查 — turn 开始前检查用户/org 的用量是否超限
+    if (thread.ownerId || thread.orgId) {
+      const quotaScope = thread.orgId ? 'org' as const : 'user' as const
+      const quotaId = thread.orgId || thread.ownerId!
+      const quotaResult = await checkQuota(quotaScope, quotaId)
+      if (!quotaResult.allowed) {
+        throw new Error(`配额超限: ${quotaResult.reason || '用量已达上限'}`)
+      }
+    }
 
     // 1. 创建 Turn
     const turn: Turn = {
@@ -596,6 +608,21 @@ export class ThreadManager {
     stopTurnTimer()
     chituMetrics.recordTurn(turn.status)
     chituMetrics.recordTokens(agentResult.totalTokens)
+
+    // M20: 用量追踪 — 异步记录 token 消耗到 usage_logs 表
+    const turnDurationMs = turn.completedAt! - turn.startedAt
+    recordUsage({
+      userId: thread.ownerId,
+      orgId: thread.orgId,
+      threadId,
+      turnId: turn.id,
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: agentResult.totalTokens,
+      iterations: agentResult.iterations,
+      durationMs: turnDurationMs,
+      status: turn.status,
+    }).catch(() => {})
 
     return {
       content: agentResult.content,

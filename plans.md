@@ -20,7 +20,7 @@
 - [x] M17: 代码语义索引（AST + Embedding 搜索）
 - [x] M18: IDE 插件（VS Code）
 - [x] M19: 用户系统 + 组织 + 权限
-- [ ] M20: 用量追踪 + 计费
+- [x] M20: 用量追踪 + 计费
 - [ ] M21: 多模态支持
 - [ ] M22: Documentation + Final Verification
 
@@ -395,7 +395,12 @@
   - 配额系统基本可用
   - `npx tsc --noEmit` 通过
 - **Verification Commands**: `npx tsc --noEmit`
-- **Status**: pending
+- **Status**: completed
+- **Started**: 1776565645766
+- **Completed**: 1776566099341
+
+### Decisions
+- 用量追踪架构设计：(1) 新建 usage_logs 表记录每次 turn 的 token 消耗，关联 user_id 和 org_id；(2) 用量追踪模块 UsageTracker 集成到 ThreadManager.runTurn()，turn 完成后异步写入；(3) 配额系统用 JSON 配置定义套餐（免费/付费），检查时从 usage_logs 聚合当月用量与配额比较；(4) JSON-RPC 新增 usage/get 和 quota/check 方法。
 
 ## M21: 多模态支持
 - **Scope**: 图片输入：支持截图/设计稿上传，Agent 通过 multimodal LLM 理解。图片输出：Mermaid/PlantUML 图表生成。

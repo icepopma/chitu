@@ -122,6 +122,47 @@ const MIGRATIONS = [
 			CREATE INDEX IF NOT EXISTS idx_threads_org_id ON threads(org_id);
 		`,
 	},
+	{
+		name: '009_create_usage_logs',
+		sql: `
+			CREATE TABLE IF NOT EXISTS usage_logs (
+				id TEXT PRIMARY KEY,
+				user_id TEXT,
+				org_id TEXT,
+				thread_id TEXT NOT NULL,
+				turn_id TEXT NOT NULL,
+				model TEXT NOT NULL DEFAULT 'glm-5',
+				prompt_tokens INTEGER NOT NULL DEFAULT 0,
+				completion_tokens INTEGER NOT NULL DEFAULT 0,
+				total_tokens INTEGER NOT NULL DEFAULT 0,
+				iterations INTEGER NOT NULL DEFAULT 0,
+				duration_ms INTEGER NOT NULL DEFAULT 0,
+				status TEXT NOT NULL DEFAULT 'completed',
+				created_at BIGINT NOT NULL
+			);
+			CREATE INDEX IF NOT EXISTS idx_usage_logs_user_id ON usage_logs(user_id);
+			CREATE INDEX IF NOT EXISTS idx_usage_logs_org_id ON usage_logs(org_id);
+			CREATE INDEX IF NOT EXISTS idx_usage_logs_created_at ON usage_logs(created_at);
+			CREATE INDEX IF NOT EXISTS idx_usage_logs_user_created ON usage_logs(user_id, created_at);
+			CREATE INDEX IF NOT EXISTS idx_usage_logs_org_created ON usage_logs(org_id, created_at);
+		`,
+	},
+	{
+		name: '010_create_quotas',
+		sql: `
+			CREATE TABLE IF NOT EXISTS quotas (
+				id TEXT PRIMARY KEY,
+				scope TEXT NOT NULL,
+				scope_id TEXT NOT NULL,
+				plan TEXT NOT NULL DEFAULT 'free',
+				monthly_token_limit INTEGER NOT NULL DEFAULT 1000000,
+				monthly_turn_limit INTEGER NOT NULL DEFAULT 1000,
+				created_at BIGINT NOT NULL,
+				updated_at BIGINT NOT NULL,
+				UNIQUE(scope, scope_id)
+			);
+		`,
+	},
 ]
 
 export async function runMigrations(): Promise<void> {

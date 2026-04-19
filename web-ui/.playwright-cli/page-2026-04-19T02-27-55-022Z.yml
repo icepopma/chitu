@@ -1,0 +1,26 @@
+- generic [ref=e94]:
+  - generic [ref=e95]:
+    - button "返回" [ref=e96]:
+      - img [ref=e97]
+      - generic [ref=e99]: 返回
+    - generic [ref=e100]: "|"
+    - generic [ref=e101]: 监控面板
+    - button "刷新" [ref=e103]:
+      - img [ref=e104]
+  - generic [ref=e109]:
+    - button "总览" [ref=e110]:
+      - img [ref=e111]
+      - text: 总览
+    - button "Token 成本" [ref=e116]:
+      - img [ref=e117]
+      - text: Token 成本
+    - button "记忆" [ref=e119]:
+      - img [ref=e120]
+      - text: 记忆
+    - button "工具使用" [ref=e128]:
+      - img [ref=e129]
+      - text: 工具使用
+  - generic [ref=e132]: 加载中...
+  - generic [ref=e133]:
+    - generic [ref=e134]: 赤兔监控 v0.2.0
+    - generic [ref=e135]: 未连接

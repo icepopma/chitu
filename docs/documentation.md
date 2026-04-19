@@ -28,7 +28,8 @@
 - M17: ✅ 已完成（代码语义索引）
 - M18: ✅ 已完成（IDE 插件 VS Code）
 - M19: ✅ 已完成（用户系统 + 组织 + 权限）
-- M20-M22: 待处理
+- M20: ✅ 已完成（用量追踪 + 计费）
+- M21-M22: 待处理
 
 ### 优先级分组
 | 优先级 | 范围 | Milestones |
@@ -119,6 +120,9 @@
 
 **用户系统 + 组织权限：**
 - **用户注册/登录 + 组织管理**（M19）— 新增 `src/auth/user-store.ts`（用户 CRUD + 密码哈希 + JWT 生成 + 组织管理）和 `src/server/user-handlers.ts`（JSON-RPC 薄适配层）。`src/server/message-processor.ts` 新增 8 个 JSON-RPC 方法：`auth/register`（注册）、`auth/login`（登录返回 JWT）、`auth/getUser`（获取用户信息）、`org/create`（创建组织）、`org/addMember`（添加成员）、`org/listMembers`（列出成员）、`org/list`（列出用户组织）、`admin/listUsers`（管理员列出所有用户）。Thread 类型新增 `ownerId` 和 `orgId` 可选字段，ThreadStore PG 读写和 ThreadManager.create/fork 均已更新支持归属关系。数据库迁移 006-008 创建 users 表、organizations/org_members 表、threads 添加 owner_id/org_id 列。
+
+**用量追踪 + 计费：**
+- **M20: 用量追踪 + 配额系统** — 新增 `src/monitoring/usage.ts`（用量记录 + 按用户/组织聚合查询）、`src/monitoring/quota.ts`（套餐定义 + 配额检查 + 配额配置管理）、`src/server/usage-handlers.ts`（JSON-RPC 适配层）。`src/thread/manager.ts` 集成：turn 开始前 `checkQuota()` 检查是否超限，turn 完成后 `recordUsage()` 异步写入 token 消耗。数据库迁移 009（usage_logs 表）+ 010（quotas 表）。JSON-RPC 新增 5 个方法：`usage/get`（查询用量）、`quota/check`（检查配额）、`quota/set`（设置配额）、`quota/get`（获取配额配置）、`quota/plans`（列出套餐）。套餐定义：免费版（100万 token/月）、专业版（1000万 token/月）、企业版（1亿 token/月）。
 
 ## 本地启动
 
@@ -324,7 +328,14 @@ CLI (readline)
 - **为什么**：scrypt 是 Node.js 内置的强密码哈希算法（比 bcrypt 更抗 GPU 暴力破解），零外部依赖。JWT 复用 M10 已验证的自实现方案保持一致性。org_members 表用 (org_id, user_id) 复合主键 + role 字段，满足基本的组织权限需求且不过度设计。
 - **Trade-off**：scryptSync 是同步操作（注册/登录时阻塞事件循环），但密码哈希通常 <100ms，对低并发场景可接受。未实现 GitHub OAuth（需外部凭证配置）。未实现细粒度 RBAC（admin/member 两种角色足够起步）。
 
+### M20: 用量追踪 + 计费
+- **决策**：用量数据写入 `usage_logs` 表（每次 turn 一条记录），配额配置写入 `quotas` 表（按 user/org 粒度）。用量记录异步 fire-and-forget，不阻塞 turn 返回。配额检查在 turn 开始前同步执行，超限直接抛错拒绝。套餐用代码常量定义（free/pro/enterprise），可通过 `quotas` 表覆盖。环境变量 `CHITU_QUOTA_DISABLED=true` 可跳过配额检查（开发模式）。
+- **为什么**：异步记录用量避免增加 turn 延迟。配额检查同步执行确保超限请求在消耗资源前被拒绝。SQL 聚合查询（SUM + date_trunc + GROUP BY）利用数据库能力做统计，避免在应用层维护计数器。套餐定义用代码常量而非数据库表，减少一次查询。
+- **Trade-off**：用量查询用 `sql.unsafe()` 进行动态列名查询（tagged template 不支持动态列名），有 SQL 注入风险但参数是内部生成的 scope/user 值，非用户输入。当月用量实时聚合查询在高数据量时可能变慢，未来可考虑缓存或预聚合。
+
 ## 变更日志
+
+2026-04-19: M20 完成 — 用量追踪 + 计费。新增 `src/monitoring/usage.ts`（recordUsage + getUserUsage + getOrgUsage + getCurrentMonthUsage）、`src/monitoring/quota.ts`（checkQuota + setQuotaConfig + getQuotaConfig + 套餐定义）、`src/server/usage-handlers.ts`（5 个 JSON-RPC handler）。ThreadManager.runTurn() 集成：turn 前配额检查 + turn 后异步记录用量。数据库迁移 009（usage_logs）+ 010（quotas）。JSON-RPC 新增 usage/get、quota/check、quota/set、quota/get、quota/plans。
 
 2026-04-19: M19 完成 — 用户系统 + 组织权限。新增 `src/auth/user-store.ts`（用户 CRUD + scrypt 密码哈希 + JWT 生成 + 组织管理）、`src/server/user-handlers.ts`（JSON-RPC 适配层）。`message-processor.ts` 新增 8 个方法（auth/register、auth/login、auth/getUser、org/create、org/addMember、org/listMembers、org/list、admin/listUsers）。Thread 类型新增 ownerId/orgId，ThreadStore 和 ThreadManager 已更新。修复 ThreadStore INSERT/SELECT SQL 列名遗漏。fork 方法继承 ownerId/orgId。
 
