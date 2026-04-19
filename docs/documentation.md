@@ -20,7 +20,8 @@
 - M9: ✅ 已完成（MCP 集成）
 - M10: ✅ 已完成（WebSocket 认证）
 - M11: ✅ 已完成（CLI 模式）
-- M12-M22: 待处理
+- M12: ✅ 已完成（沙盒执行）
+- M13-M22: 待处理
 
 ### 优先级分组
 | 优先级 | 范围 | Milestones |
@@ -78,6 +79,9 @@
 
 **CLI 模式：**
 - **终端交互界面**（M11）— 放弃原计划的 `ink`（React for CLI），改用 Node.js 内置 `readline/promises` 实现零外部依赖的 TUI。新增 `src/cli/index.ts`（154 行）。关键决策：**进程内架构**（CLI 直接实例化 ThreadManager，不走 WebSocket/JSON-RPC），避免网络开销。功能：交互式提示符 `你 > `、事件驱动实时输出（🐎 turn 开始、🔧 工具调用、流式文本输出）、内联审批流程、SIGINT 优雅退出。package.json 新增 `bin.chitu` 和 `npm run cli` 脚本。
+
+**沙盒执行：**
+- **Sandbox 隔离**（M12）— exec 工具在沙盒中执行命令，macOS 使用 `sandbox-exec`（Seatbelt SBPL 策略），Linux 预留 Docker 接口。策略采用白名单模式（deny default）：允许读取系统路径和项目目录、允许写入指定可写路径（node_modules/.git/dist/tmp/chitu-data）和 /tmp 临时目录、禁止网络访问、允许进程创建和 IPC。沙盒可配置开关（Tool 接口 `sandboxEnabled` 属性）。策略文件写入 /tmp 临时文件，执行完毕后清理。exec 工具输出带 `[sandbox: macos]` 标记。新增 `src/sandbox/` 目录（4 个文件）。
 
 **配置与存储：**
 - **分层配置系统**（M2）— 4 层叠加：全局 `~/.chitu/config.json` → 项目 `.chitu/config.json` → 环境变量 → CLI 参数。后者覆盖前者。支持类型验证。7 个文件：types.ts（类型定义）、defaults.ts（默认值）、loader.ts（文件加载）、merge.ts（4 层合并）、env.ts（环境变量映射）、validate.ts（验证）、index.ts（入口 + 单例缓存）
@@ -148,6 +152,7 @@ src/
   skills/       — Skills 加载系统
   thread/       — ThreadManager + ThreadStore（PG 主 + JSON 备份）
   tools/        — 工具系统：PluginLoader + 多个 Plugin（exec, files, plan, milestone, git v2.0）
+  sandbox/      — 沙盒执行：Seatbelt 策略 + 统一执行器（macOS sandbox-exec / Linux Docker）
   utils/        — 通用工具（shell 检测、环境快照 diff）
   watcher/      — 文件监听：FileWatcher + SkillsWatcher + FileChangeBuffer
   types.ts      — 核心类型（Thread/Turn/Item/AppEvent）
@@ -189,7 +194,7 @@ CLI (readline)
 - ~~无 MCP 工具生态集成（M9）~~ ✅ 已完成
 - ~~WebSocket 无认证（M10）~~ ✅ 已完成
 - ~~无 CLI 终端模式（M11）~~ ✅ 已完成
-- exec 工具无沙盒隔离（M12）
+- ~~exec 工具无沙盒隔离（M12）~~ ✅ 已完成
 - 无 CI/CD（M13）
 - 监控面板指标不够丰富，需对标 Hermes HUD 增强（M15）
 
@@ -240,7 +245,14 @@ CLI (readline)
 - **为什么**：ink 引入 React 运行时 + yoga-layout + ink 生态依赖，对一个 CLI 界面来说过重。readline/promises 是 Node.js 内置模块，零依赖。进程内架构（直接实例化 ThreadManager）比 stdio JSON-RPC 少一层网络开销，延迟更低。
 - **Trade-off**：readline 的 UI 能力比 ink 弱（不支持富文本布局、进度条等）。但 CLI 场景主要是文本输入输出，readline 足够。
 
+### M12: 沙盒执行
+- **决策**：macOS 使用 `sandbox-exec`（Seatbelt SBPL 策略），Linux 预留 Docker 接口。策略用白名单模式（deny default）。
+- **为什么**：`sandbox-exec` 是 macOS 原生沙盒机制，无需额外依赖，策略用 S-expression 格式描述。白名单模式（默认拒绝所有，只放行必要操作）比黑名单更安全。参考 Codex `codex-rs/sandboxing/` 的设计。
+- **Trade-off**：`sandbox-exec` 被 Apple 标记为 deprecated（实际仍可用）。Linux 沙盒需 Docker（M13 完善）。Seatbelt 策略配置较复杂，首次调试可能需要放宽权限。
+
 ## 变更日志
+
+- 2026-04-19: M12 完成 — 新增 src/sandbox/ 目录（4 个文件：types.ts、seatbelt.ts、executor.ts、index.ts），沙盒执行隔离。macOS 使用 sandbox-exec + Seatbelt SBPL 策略（白名单模式：只读项目目录 + 指定可写路径 + 禁止网络）。修改 src/tools/base.ts（Tool 接口新增 sandboxEnabled）、src/tools/exec.ts（集成 execInSandbox）。
 
 - 2026-04-19: M11 完成 — 新增 src/cli/index.ts（154 行），readline TUI + 进程内架构。支持交互式对话、流式输出、内联审批、SIGINT 退出。package.json 新增 bin.chitu 和 npm run cli。
 

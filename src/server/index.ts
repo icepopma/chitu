@@ -182,8 +182,8 @@ function buildDashboardData(manager: ThreadManager, projectRoot: string, process
   const hasActive = milestones.some(m => m.status === 'in_progress')
   const taskDurationMs = taskStartedAt ? ((hasActive ? now : (lastCompletedAt || now)) - taskStartedAt - processor.getPausedDuration()) : undefined
 
-  // 最近的 rollout events
-  const recentEvents = loadRecentRolloutEvents(projectRoot, 20)
+  // 最近的实时事件（从内存缓冲区读取）
+  const recentEvents = processor.getRecentEvents()
 
   return {
     status,

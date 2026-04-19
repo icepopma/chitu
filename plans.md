@@ -12,7 +12,7 @@
 - [x] M9: MCP 集成（工具生态）
 - [x] M10: WebSocket 认证（API Key + JWT）
 - [x] M11: CLI 模式（终端界面）
-- [ ] M12: 沙盒执行（容器隔离）
+- [x] M12: 沙盒执行（容器隔离）
 - [ ] M13: Docker + CI/CD
 - [ ] M14: Review 模式
 - [ ] M15: 增强监控面板（对标 Hermes HUD）
@@ -239,7 +239,15 @@
   - 网络访问被禁止
   - `npx tsc --noEmit` 通过
 - **Verification Commands**: `npx tsc --noEmit`
-- **Status**: pending
+- **Status**: completed
+- **Started**: 1776537412370
+- **Completed**: 1776559638696
+
+### Decisions
+- macOS 使用 sandbox-exec（Seatbelt SBPL 策略文件）实现沙盒隔离，Linux 预留 Docker 接口（M13 完善）。策略采用白名单模式（deny default）：允许读取系统路径和项目目录、允许写入指定可写路径和 /tmp、禁止网络访问、允许进程创建和 IPC。策略文件写入 /tmp 临时文件，执行完毕后清理。
+
+### Notes
+- 新增 src/sandbox/ 目录（4 个文件）：types.ts（SandboxConfig 类型 + 默认可写路径）、seatbelt.ts（Seatbelt SBPL 策略生成器）、executor.ts（统一沙盒执行器，detectSandboxPlatform + execInSandbox）、index.ts（模块入口）。修改 src/tools/base.ts（Tool 接口新增 sandboxEnabled 可选属性）、src/tools/exec.ts（用 execInSandbox 替换 child_process.exec 直调，沙盒结果带 [sandbox: macos] 标记）。
 
 ## M13: Docker + CI/CD
 - **Scope**: Dockerfile（多阶段构建）。`docker-compose.yml`（server + frontend + Neon 环境变量）。GitHub Actions CI（lint + type check + E2E test）。

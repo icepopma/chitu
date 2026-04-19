@@ -9,7 +9,8 @@
  */
 
 import { randomUUID } from 'crypto'
-import { readdirSync, existsSync } from 'fs'
+import { readdirSync, existsSync, readFileSync } from 'fs'
+import { join } from 'path'
 import type { Thread, Turn, Item, AppEvent, EventHandler, PlanStep } from '../types.js'
 import { ThreadStore } from './store.js'
 import { RolloutRecorder } from '../rollout/recorder.js'
@@ -167,6 +168,7 @@ export class ThreadManager {
     const thread = await this.store.load(threadId)
     if (thread && (thread.status === 'idle' || thread.status === 'active')) {
       thread.status = 'active'
+      thread.currentPlan = undefined
       thread.updatedAt = Date.now()
       await this.store.save(thread)
     }
@@ -513,6 +515,7 @@ export class ThreadManager {
     recordTurnComplete(turn.id, turnDbStatus).catch(() => {})
 
     thread.status = 'idle'
+    thread.currentPlan = undefined
     thread.updatedAt = Date.now()
     this.emit({ type: 'turn/completed', turn, thread })
     await this.store.save(thread)
@@ -550,18 +553,30 @@ export class ThreadManager {
 
   /** 获取服务器运行状态 */
   getStatus(): ServerStatus {
-    // 从文件系统获取真实 thread 数量
+    // 从文件系统获取真实数据
     let threadCount = 0
+    let turnCount = this._totalTurns
     const dir = './chitu-data/threads'
     if (existsSync(dir)) {
-      threadCount = readdirSync(dir).filter((f: string) => f.endsWith('.json')).length
+      const files = readdirSync(dir).filter((f: string) => f.endsWith('.json'))
+      threadCount = files.length
+      // 从线程文件中统计 turns（每个 user_message 视为一个 turn）
+      if (turnCount === 0) {
+        for (const file of files) {
+          try {
+            const raw = readFileSync(join(dir, file), 'utf-8')
+            const data = JSON.parse(raw) as Thread
+            turnCount += data.items.filter(i => i.type === 'user_message').length
+          } catch { /* skip */ }
+        }
+      }
     }
 
     return {
       uptime: Date.now() - this.startedAt,
       startedAt: this.startedAt,
       totalThreads: threadCount,
-      totalTurns: this._totalTurns,
+      totalTurns: turnCount,
       activeTurns: 0,
       totalTokens: this._totalTokens,
       totalIterations: this._totalIterations,

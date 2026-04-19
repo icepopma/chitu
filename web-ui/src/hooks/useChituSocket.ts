@@ -174,6 +174,7 @@ export function useChituSocket(options?: { url?: string }) {
           break
         case 'turn/completed':
           if (params?.turn) setTurnStatus(params.turn.status || 'completed')
+          setCurrentPlan(null)
           break
         case 'approval/requested':
           if (params) {

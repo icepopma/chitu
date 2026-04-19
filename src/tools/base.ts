@@ -43,6 +43,14 @@ export interface Tool {
    * 不实现 → 默认不需要审批
    */
   needsApproval?(args: Record<string, unknown>): boolean
+
+  /**
+   * 沙盒开关（可选）
+   *
+   * true → 命令在沙盒中执行（默认）
+   * false → 命令直接执行，无沙盒隔离
+   */
+  sandboxEnabled?: boolean
 }
 
 /**

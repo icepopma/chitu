@@ -46,11 +46,23 @@ export class MessageProcessor {
   /** 任务暂停追踪 */
   private accumulatedPausedMs = 0
   private pausedAt: number | null = null
+  /** 最近事件的内存缓冲区（供 Dashboard 实时读取） */
+  private recentEvents: Array<{ type: string; timestamp: number; data: AppEvent }> = []
+  private static MAX_EVENTS = 60
 
   constructor(manager: ThreadManager) {
     this.manager = manager
     // 在构造时设置事件监听，所有事件广播给所有客户端
-    this.manager.onEvent((event) => this.broadcastEvent(event))
+    this.manager.onEvent((event) => {
+      this.broadcastEvent(event)
+      // 跳过高频 delta 事件，只保留有意义的事件
+      if (event.type !== 'item/delta') {
+        this.recentEvents.push({ type: event.type, timestamp: Date.now(), data: event })
+        if (this.recentEvents.length > MessageProcessor.MAX_EVENTS) {
+          this.recentEvents = this.recentEvents.slice(-MessageProcessor.MAX_EVENTS)
+        }
+      }
+    })
   }
 
   /** 注册新客户端 */
@@ -68,6 +80,11 @@ export class MessageProcessor {
   getPausedDuration(): number {
     if (this.pausedAt) return this.accumulatedPausedMs + (Date.now() - this.pausedAt)
     return this.accumulatedPausedMs
+  }
+
+  /** 获取最近的内存事件（供 Dashboard） */
+  getRecentEvents(): Array<{ type: string; timestamp: number; data: AppEvent }> {
+    return this.recentEvents
   }
 
   /** 处理收到的 JSON-RPC 消息 */
