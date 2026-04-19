@@ -15,7 +15,7 @@
 - [x] M12: 沙盒执行（容器隔离）
 - [x] M13: Docker + CI/CD
 - [x] M14: Review 模式
-- [ ] M15: 增强监控面板（对标 Hermes HUD）
+- [x] M15: 增强监控面板（对标 Hermes HUD）
 - [ ] M16: 多 Agent 协作（子任务拆分 + 并行）
 - [ ] M17: 代码语义索引（AST + Embedding 搜索）
 - [ ] M18: IDE 插件（VS Code）
@@ -302,7 +302,15 @@
   - 保持现有 Discord 风格 UI 不变
   - `npx tsc --noEmit` 通过
 - **Verification Commands**: `npx tsc --noEmit`, `curl http://localhost:8080/dashboard | jq .`
-- **Status**: pending
+- **Status**: completed
+- **Started**: 1776560359340
+- **Completed**: 1776561647041
+
+### Decisions
+- 用纯 SVG 实现 Sparkline 和条形图，不引入 recharts/chart.js 等图表库。保持零新依赖，减少打包体积。SVG 组件支持渐变填充、圆点标记、响应式宽度。
+
+### Notes
+- 后端新增 src/server/dashboard-analytics.ts（4 个提取函数 + 1 个聚合函数），从 rollout JSONL 提取工具使用/每日活动/token 成本，从 memories.json 提取记忆状态。前端新增 web-ui/src/components/dashboard/ 目录（7 个文件）：Sparkline、CapacityBar、ToolBarChart、OverviewTab、TokenCostTab、MemoryTab、ToolUsageTab。DashboardPage.tsx 重写为 Tab 导航架构（总览/Token成本/记忆/工具使用）。版本号更新为 v0.2.0。
 
 ## M16: 多 Agent 协作（子任务拆分 + 并行）
 - **Scope**: `src/agent/spawn.ts` 子 Agent 派发（每个子任务一个独立 Agent Loop 实例）。Agent 间通过消息队列通信。深度限制（最多 3 层嵌套）防止失控。参考 Codex `codex-rs/core/src/spawn.rs`。

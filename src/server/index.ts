@@ -13,7 +13,7 @@
 
 import { WebSocketServer, type WebSocket } from 'ws'
 import { createServer } from 'http'
-import { readFileSync, readdirSync } from 'node:fs'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { ThreadManager } from '../thread/manager.js'
 import { MessageProcessor } from './message-processor.js'
@@ -24,6 +24,7 @@ import { chituMetrics } from '../monitoring/metrics.js'
 import { logger } from '../monitoring/logger.js'
 import { FileWatcher, FileChangeBuffer, SkillsWatcher } from '../watcher/index.js'
 import { authenticateConnection, extractTokenFromRequest } from '../auth/index.js'
+import { buildAnalytics } from './dashboard-analytics.js'
 
 export interface AppServerOptions {
   port?: number
@@ -145,6 +146,7 @@ export function createAppServer(options?: AppServerOptions) {
 
 /** 聚合 dashboard 数据 */
 function buildDashboardData(manager: ThreadManager, projectRoot: string, processor: MessageProcessor) {
+  const dataDir = join(projectRoot, 'chitu-data')
   const status = manager.getStatus()
 
   // 里程碑进度（含任务时长）
@@ -182,8 +184,30 @@ function buildDashboardData(manager: ThreadManager, projectRoot: string, process
   const hasActive = milestones.some(m => m.status === 'in_progress')
   const taskDurationMs = taskStartedAt ? ((hasActive ? now : (lastCompletedAt || now)) - taskStartedAt - processor.getPausedDuration()) : undefined
 
-  // 最近的实时事件（从内存缓冲区读取）
-  const recentEvents = processor.getRecentEvents()
+  // 最近事件：优先内存缓冲，不够时从磁盘补充
+  const memEvents = processor.getRecentEvents()
+  let recentEvents: Array<{ type: string; timestamp: number; data: any }>
+  if (memEvents.length >= 10) {
+    recentEvents = memEvents.slice(-30)
+  } else {
+    const fileEvents = loadRecentRolloutEvents(projectRoot, 30)
+    // 合并去重
+    const seen = new Set<string>()
+    const merged: typeof memEvents = []
+    for (const e of [...fileEvents, ...memEvents]) {
+      const ts = typeof e.timestamp === 'number' ? e.timestamp : 0
+      const key = `${ts}:${e.type}`
+      if (!seen.has(key)) {
+        seen.add(key)
+        merged.push({ type: e.type, timestamp: ts, data: e.data })
+      }
+    }
+    merged.sort((a, b) => a.timestamp - b.timestamp)
+    recentEvents = merged.slice(-30)
+  }
+
+  // M15: 集成 analytics（工具使用、每日活动、记忆、token 成本）
+  const analytics = buildAnalytics(dataDir)
 
   return {
     status,
@@ -202,18 +226,24 @@ function buildDashboardData(manager: ThreadManager, projectRoot: string, process
       hasActive,
     },
     recentEvents,
+    analytics,
     timestamp: Date.now(),
   }
 }
 
-/** 读取最近 N 条 rollout events */
+/** 读取最近 N 条 rollout events（从多个线程文件中聚合） */
 function loadRecentRolloutEvents(projectRoot: string, limit: number): Array<{ type: string; timestamp: number; data: any }> {
   const rolloutDir = join(projectRoot, 'chitu-data', 'rollouts')
   try {
-    const files = readdirSync(rolloutDir).filter(f => f.endsWith('.jsonl')).sort().reverse()
+    // 按修改时间排序，最新的文件优先
+    const files = readdirSync(rolloutDir)
+      .filter(f => f.endsWith('.jsonl'))
+      .map(f => ({ name: f, mtime: statSync(join(rolloutDir, f)).mtimeMs }))
+      .sort((a, b) => b.mtime - a.mtime)
+      .map(f => f.name)
     const events: Array<{ type: string; timestamp: number; data: any }> = []
-    // 只读最新的那个 rollout 文件（当前活跃线程）
-    for (const file of files.slice(0, 1)) {
+    // 读最近 5 个文件（覆盖多个线程的活动）
+    for (const file of files.slice(0, 5)) {
       const content = readFileSync(join(rolloutDir, file), 'utf-8')
       const lines = content.trim().split('\n').filter(Boolean)
       // 只取最后 limit 条，跳过 item/delta（太多太碎）
