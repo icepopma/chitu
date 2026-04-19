@@ -3,11 +3,6 @@
  *
  * 使用 Node.js crypto 模块实现密码哈希（scrypt），
  * 不引入 bcrypt 等外部依赖。
- *
- * 学习重点：
- * - scrypt 是 Node.js 内置的密码哈希算法，抗 GPU/ASIC 暴力破解
- * - JWT 生成使用 HMAC-SHA256，与现有 auth 模块的验证逻辑对齐
- * - 用户 ID 使用 crypto.randomUUID()，全局唯一
  */
 
 import { scryptSync, randomBytes, createHmac } from 'node:crypto'
@@ -43,6 +38,42 @@ export interface Organization {
   createdAt: number
 }
 
+// ===== DB Row 类型 =====
+
+interface UserRow {
+  id: string
+  email: string
+  display_name: string
+  password_hash: string
+  created_at: number
+  updated_at: number
+}
+
+interface UserListRow {
+  id: string
+  email: string
+  display_name: string
+  created_at: number
+  updated_at: number
+}
+
+interface OrgRow {
+  id: string
+  name: string
+  slug: string
+  created_at: number
+  role: string
+}
+
+interface OrgMemberRow {
+  org_id: string
+  user_id: string
+  role: string
+  joined_at: number
+  email: string
+  display_name: string
+}
+
 // ===== 密码哈希 =====
 
 const SALT_LENGTH = 16
@@ -72,7 +103,7 @@ export function generateJwt(payload: { userId: string; email: string; orgId?: st
   const body = Buffer.from(JSON.stringify({
     ...payload,
     iat: Math.floor(Date.now() / 1000),
-    exp: Math.floor(Date.now() / 1000) + 86400 * 7, // 7 天过期
+    exp: Math.floor(Date.now() / 1000) + 86400 * 7,
   })).toString('base64url')
   const signature = createHmac('sha256', secret)
     .update(`${header}.${body}`)
@@ -97,7 +128,6 @@ export async function registerUser(email: string, password: string, displayName?
 
   const token = generateJwt({ userId: id, email })
 
-  // 为新用户创建个人组织
   const orgId = randomBytes(16).toString('hex')
   const slug = `personal-${id.slice(0, 8)}`
   await sql`
@@ -122,13 +152,13 @@ export async function loginUser(email: string, password: string): Promise<{ user
   const rows = await sql`
     SELECT id, email, display_name, password_hash, created_at, updated_at
     FROM users WHERE email = ${email}
-  `
+  ` as UserRow[]
 
   if (rows.length === 0) {
     throw new Error('用户不存在')
   }
 
-  const row = rows[0] as any
+  const row = rows[0]
   if (!verifyPassword(password, row.password_hash)) {
     throw new Error('密码错误')
   }
@@ -141,14 +171,13 @@ export async function loginUser(email: string, password: string): Promise<{ user
     updatedAt: row.updated_at,
   }
 
-  // 查找用户的个人组织
   const orgRows = await sql`
     SELECT om.org_id FROM org_members om
     JOIN organizations o ON o.id = om.org_id
     WHERE om.user_id = ${user.id} AND om.role = 'owner'
     ORDER BY o.created_at ASC LIMIT 1
-  `
-  const orgId = (orgRows[0] as any)?.org_id
+  ` as Array<{ org_id: string }>
+  const orgId = orgRows[0]?.org_id
 
   const token = generateJwt({ userId: user.id, email: user.email, orgId })
 
@@ -161,9 +190,9 @@ export async function getUserById(id: string): Promise<User | null> {
   const rows = await sql`
     SELECT id, email, display_name, created_at, updated_at
     FROM users WHERE id = ${id}
-  `
+  ` as UserListRow[]
   if (rows.length === 0) return null
-  const row = rows[0] as any
+  const row = rows[0]
   return {
     id: row.id,
     email: row.email,
@@ -179,8 +208,8 @@ export async function listUsers(): Promise<User[]> {
   const rows = await sql`
     SELECT id, email, display_name, created_at, updated_at
     FROM users ORDER BY created_at DESC
-  `
-  return (rows as any[]).map(row => ({
+  ` as UserListRow[]
+  return rows.map(row => ({
     id: row.id,
     email: row.email,
     displayName: row.display_name,
@@ -218,8 +247,8 @@ export async function listUserOrganizations(userId: string): Promise<Array<Organ
     JOIN org_members om ON o.id = om.org_id
     WHERE om.user_id = ${userId}
     ORDER BY o.created_at ASC
-  `
-  return (rows as any[]).map(row => ({
+  ` as OrgRow[]
+  return rows.map(row => ({
     id: row.id,
     name: row.name,
     slug: row.slug,
@@ -249,8 +278,8 @@ export async function listOrgMembers(orgId: string): Promise<Array<OrgMember & {
     JOIN users u ON u.id = om.user_id
     WHERE om.org_id = ${orgId}
     ORDER BY om.joined_at ASC
-  `
-  return (rows as any[]).map(row => ({
+  ` as OrgMemberRow[]
+  return rows.map(row => ({
     orgId: row.org_id,
     userId: row.user_id,
     role: row.role as UserRole,
@@ -266,9 +295,9 @@ export async function getUserRole(orgId: string, userId: string): Promise<UserRo
   const rows = await sql`
     SELECT role FROM org_members
     WHERE org_id = ${orgId} AND user_id = ${userId}
-  `
+  ` as Array<{ role: string }>
   if (rows.length === 0) return null
-  return (rows[0] as any).role as UserRole
+  return rows[0].role as UserRole
 }
 
 /** 从 JWT payload 中解析用户 ID */

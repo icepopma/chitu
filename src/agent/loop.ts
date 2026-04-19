@@ -629,8 +629,8 @@ export async function runAgentLoop(
         )
         llmSucceeded = true
         break
-      } catch (llmErr: any) {
-        logger.error('LLM call failed', { attempt: retry + 1, maxRetries: llmMaxRetries, error: llmErr.message })
+      } catch (llmErr: unknown) {
+        logger.error('LLM call failed', { attempt: retry + 1, maxRetries: llmMaxRetries, error: llmErr instanceof Error ? llmErr.message : String(llmErr) })
         if (retry < llmMaxRetries - 1) {
           const waitMs = Math.pow(2, retry) * 2000
           logger.warn('LLM retry waiting', { waitMs, nextAttempt: retry + 2 })
@@ -640,7 +640,7 @@ export async function runAgentLoop(
           logger.error('LLM call failed after all retries, adding error to context', { maxRetries: llmMaxRetries })
           messages.push({
             role: 'user',
-            content: `[系统错误] LLM API 连续 ${llmMaxRetries} 次调用失败: ${llmErr.message}。如果是 API key 问题请停止并告知用户。如果是网络问题，请继续尝试。`,
+            content: `[系统错误] LLM API 连续 ${llmMaxRetries} 次调用失败: ${llmErr instanceof Error ? llmErr.message : String(llmErr)}。如果是 API key 问题请停止并告知用户。如果是网络问题，请继续尝试。`,
           })
         }
       }
@@ -785,8 +785,8 @@ export async function runAgentLoop(
           isError = result.isError || false
           exitCode = result.exitCode
           chituMetrics.recordToolCall(toolName, 'success')
-        } catch (err: any) {
-          resultContent = `工具执行出错: ${err.message}`
+        } catch (err: unknown) {
+          resultContent = `工具执行出错: ${err instanceof Error ? err.message : String(err)}`
           isError = true
           exitCode = 1
           chituMetrics.recordToolCall(toolName, 'error')

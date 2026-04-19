@@ -10,7 +10,7 @@
  * - 缓存：索引在内存中缓存，后续查询无开销
  */
 
-import type { Tool, ToolResult } from '../base.js'
+import type { Tool, ToolResult } from '../tools/base.js'
 import { CodeIndexer } from '../indexer/index.js'
 
 /** 全局索引器单例（懒初始化） */

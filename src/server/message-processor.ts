@@ -333,7 +333,9 @@ export class MessageProcessor {
           this.manager.runTurn(threadId, '继续下一个 milestone', {
             signal: newController.signal,
             onApprovalNeeded: async () => true,
-          }).catch(() => {}).finally(() => {
+          }).catch(err => {
+            logger.warn('Auto-continue turn failed', { threadId, error: String(err) })
+          }).finally(() => {
             this.activeTurns.delete(threadId)
           })
         }, 500)

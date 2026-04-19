@@ -24,11 +24,11 @@ export function approxTokenCount(text: string): number {
  * 遍历所有消息的 content + tool_calls 参数，累加估算值。
  * 不包括协议开销（role 字段、JSON 结构等），但足够用于阈值判断。
  */
-export function estimateMessagesTokens(messages: Array<{ content: string | null; tool_calls?: any[] }>): number {
+export function estimateMessagesTokens(messages: Array<{ content: string | unknown[] | null; tool_calls?: any[] }>): number {
   let total = 0
   for (const msg of messages) {
     if (msg.content) {
-      total += approxTokenCount(msg.content)
+      total += typeof msg.content === 'string' ? approxTokenCount(msg.content) : approxTokenCount(JSON.stringify(msg.content))
     }
     if (msg.tool_calls) {
       for (const tc of msg.tool_calls) {

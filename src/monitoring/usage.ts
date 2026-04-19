@@ -178,7 +178,7 @@ async function queryUsage(params: {
 			AND created_at <= ${endDate}
 	`)
 
-	const daily: UsageAggregate[] = (dailyRows as any[]).map(row => ({
+	const daily: UsageAggregate[] = (dailyRows as unknown as any[]).map(row => ({
 		period: row.day instanceof Date ? row.day.toISOString().slice(0, 10) : String(row.day).slice(0, 10),
 		totalTokens: Number(row.total_tokens),
 		promptTokens: Number(row.prompt_tokens),
@@ -188,7 +188,7 @@ async function queryUsage(params: {
 		avgDurationMs: Math.round(Number(row.avg_duration_ms)),
 	}))
 
-	const monthly: UsageAggregate[] = (monthlyRows as any[]).map(row => ({
+	const monthly: UsageAggregate[] = (monthlyRows as unknown as any[]).map(row => ({
 		period: row.month instanceof Date ? row.month.toISOString().slice(0, 7) : String(row.month).slice(0, 7),
 		totalTokens: Number(row.total_tokens),
 		promptTokens: Number(row.prompt_tokens),
@@ -198,7 +198,7 @@ async function queryUsage(params: {
 		avgDurationMs: Math.round(Number(row.avg_duration_ms)),
 	}))
 
-	const totalRow = (totalRows as any[])[0]
+	const totalRow = (totalRows as unknown as any[])[0]
 	const totalTokens = Number(totalRow?.total_tokens || 0)
 	const totalTurns = Number(totalRow?.total_turns || 0)
 
@@ -233,7 +233,7 @@ export async function getCurrentMonthUsage(
 			AND created_at <= ${now}
 	`)
 
-	const row = (rows as any[])[0]
+	const row = (rows as unknown as any[])[0]
 	return {
 		totalTokens: Number(row?.total_tokens || 0),
 		turnCount: Number(row?.turn_count || 0),

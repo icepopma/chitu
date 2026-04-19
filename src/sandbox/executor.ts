@@ -126,7 +126,7 @@ function execDirect(
       (error, stdout, stderr) => {
         // Node.js child_process.exec: 非零退出码时 error 不为 null
         // error.status 是退出码（数字），error.code 也是退出码
-        const exitCode = error ? (typeof error.code === 'number' ? error.code : (error.status ?? 1)) : 0
+        const exitCode = error ? (typeof error.code === 'number' ? error.code : ((error as any).status ?? 1)) : 0
         const timedOut = error ? !!(error as any).killed : false
         resolve({
           stdout: (stdout || '').trim(),
@@ -193,7 +193,7 @@ function execMacosSandbox(
         if (sandboxFailed) {
           execDirect(command, opts).then((directResult) => {
             const sandboxExitCode = error
-              ? (typeof error.code === 'number' ? error.code : (error.status ?? 1))
+              ? (typeof error.code === 'number' ? error.code : ((error as any).status ?? 1))
               : 0
             directResult.stderr = `[sandbox fallback: sandbox-exec exit ${sandboxExitCode}]\n${directResult.stderr}`
             directResult.sandboxed = false

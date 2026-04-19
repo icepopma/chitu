@@ -81,7 +81,7 @@ export function parseFileSymbols(filePath: string, projectRoot: string): SymbolE
 
 
   /** 获取函数/方法签名 */
-  function getSignature(node: ts.FunctionDeclaration | ts.MethodDeclaration | ts.ArrowFunction): string {
+  function getSignature(node: ts.FunctionDeclaration | ts.MethodDeclaration | ts.ArrowFunction | ts.FunctionExpression): string {
     const printer = ts.createPrinter({ newLine: ts.NewLineKind.LineFeed })
     const text = printer.printNode(ts.EmitHint.Unspecified, node, sourceFile)
     // 截取第一行作为签名
