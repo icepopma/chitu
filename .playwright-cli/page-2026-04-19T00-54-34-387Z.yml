@@ -1,0 +1,42 @@
+- generic [ref=e3]:
+  - generic [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: 🐰 赤兔
+      - generic [ref=e7]:
+        - button "监控面板" [ref=e8]:
+          - img [ref=e9]
+        - img [ref=e11]
+    - generic [ref=e15]:
+      - generic [ref=e16]: 对话列表
+      - generic [ref=e17]: 还没有对话
+    - button "新建" [ref=e19]:
+      - img [ref=e20]
+      - text: 新建
+  - generic [ref=e21]:
+    - generic [ref=e24]:
+      - generic [ref=e25]: 🐰
+      - heading "你好，我是赤兔" [level=3] [ref=e26]
+      - paragraph [ref=e27]: 我是一个 AI Agent，可以通过工具自主完成任务：
+      - list [ref=e28]:
+        - listitem [ref=e29]:
+          - generic [ref=e30]: •
+          - generic [ref=e31]: 执行 Shell 命令
+        - listitem [ref=e32]:
+          - generic [ref=e33]: •
+          - generic [ref=e34]: 读写和编辑文件
+        - listitem [ref=e35]:
+          - generic [ref=e36]: •
+          - generic [ref=e37]: 自主完成多步任务
+        - listitem [ref=e38]:
+          - generic [ref=e39]: •
+          - generic [ref=e40]: 分析和总结代码
+      - paragraph [ref=e41]:
+        - text: 点击左侧
+        - strong [ref=e42]: 新建对话
+        - text: 开始
+    - generic [ref=e44]:
+      - textbox "请先新建一个对话" [disabled] [ref=e45]
+      - button "开启自主运行模式" [ref=e46]:
+        - img [ref=e47]
+      - button "发送" [disabled] [ref=e52]:
+        - img [ref=e53]

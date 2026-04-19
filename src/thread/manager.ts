@@ -15,6 +15,7 @@ import type { Thread, Turn, Item, AppEvent, EventHandler, PlanStep } from '../ty
 import { ThreadStore } from './store.js'
 import { RolloutRecorder } from '../rollout/recorder.js'
 import { runAgentLoop, buildSystemPrompt } from '../agent/loop.js'
+import { buildReviewSystemPrompt, isToolAllowedInReview } from '../agent/review-prompt.js'
 import type { AgentResult } from '../agent/loop.js'
 import { LLMClient } from '../llm/client.js'
 import { createToolRegistry } from '../tools/index.js'
@@ -52,6 +53,8 @@ export interface RunTurnOptions {
   onApprovalNeeded?: (toolName: string, args: Record<string, unknown>) => Promise<boolean>
   /** v14.4: Hook 分发器 */
   hookDispatcher?: HookDispatcher
+  /** M14: 运行模式 — 'default'（正常）或 'review'（只审查不修改） */
+  mode?: 'default' | 'review'
 }
 
 /** runTurn 的返回结果 */
@@ -323,7 +326,17 @@ export class ThreadManager {
     // 3. 构建 Agent Loop 的对话历史
     const client = options?.client || new LLMClient()
     client.setMetrics(chituMetrics)
-    const tools = createToolRegistry().list()
+    const allTools = createToolRegistry().list()
+
+    // M14: Review 模式 — 只允许只读工具
+    const tools = options?.mode === 'review'
+      ? allTools.filter(t => isToolAllowedInReview(t.name))
+      : allTools
+
+    // M14: Review 模式使用专用系统提示
+    const effectiveSystemPrompt = options?.mode === 'review'
+      ? buildReviewSystemPrompt()
+      : (options?.systemPrompt || buildSystemPrompt())
 
     // 从已有 items 重建对话历史
     const messages = this.buildMessages(thread)
@@ -368,7 +381,7 @@ export class ThreadManager {
       agentResult = await runAgentLoop(effectiveInput, {
         client,
         tools,
-        systemPrompt: options?.systemPrompt || buildSystemPrompt(),
+        systemPrompt: effectiveSystemPrompt,
         maxIterations: options?.maxIterations || 50,
         signal: options?.signal,
         onApprovalNeeded: options?.onApprovalNeeded,

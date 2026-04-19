@@ -22,7 +22,8 @@
 - M11: ✅ 已完成（CLI 模式）
 - M12: ✅ 已完成（沙盒执行）
 - M13: ✅ 已完成（Docker + CI/CD）
-- M14-M22: 待处理
+- M14: ✅ 已完成（Review 模式）
+- M15-M22: 待处理
 
 ### 优先级分组
 | 优先级 | 范围 | Milestones |
@@ -32,7 +33,7 @@
 | P2 平台支持 | 让赤兔跑在更多环境 | M7 ✅, M8 ✅ |
 | P3 生态集成 | 扩展能力边界 | M9 ✅, M10 ✅ |
 | P4 多端接入 | CLI/沙盒/容器 | M11 ✅, M12（沙盒）, M13（Docker CI） |
-| P5 高级功能 | Review/监控/多Agent | M14（Review）, M15（监控增强）, M16（多Agent） |
+| P5 高级功能 | Review/监控/多Agent | M14 ✅（Review）, M15（监控增强）, M16（多Agent） |
 | P6 远期目标 | 索引/IDE/用户/计费 | M17-M21 |
 | P7 收尾 | 文档 | M22 |
 
@@ -88,6 +89,9 @@
 - **多阶段 Dockerfile**（M13）— 3 阶段构建：deps（安装依赖）→ build（tsc 编译后端 + Vite 构建前端）→ production（slim 镜像，只含生产依赖和构建产物）。生产镜像基于 `node:22-bookworm-slim`，最终大小远小于完整构建镜像。
 - **docker-compose.yml**（M13）— 两个服务：server（Node.js 后端，端口 8080，含 healthcheck）+ frontend（nginx:alpine 托管前端静态文件，端口 3000）。支持 Neon PostgreSQL 环境变量透传，数据卷持久化 `chitu-data`。
 - **GitHub Actions CI**（M13）— 3 个 job：lint-and-typecheck（后端 tsc + 前端 tsc + ESLint）、build（构建后端和前端）、docker（`docker build` 验证镜像构建成功）。触发条件：push/PR 到 main 分支。
+
+**Review 模式：**
+- **Review 模式**（M14）— Agent 只审查代码不修改。新增 `src/agent/review-prompt.ts`（专用系统提示 + 只读工具过滤 + 只读命令检测）。后端：`buildReviewSystemPrompt()` 生成审查专用 prompt（输出结构化审查结果：摘要/问题列表/建议修改/总体评价），`isToolAllowedInReview()` 过滤只允许 exec（只读命令）、read_file、git_status/diff/blame/log、update_plan。`isReadOnlyCommand()` 用正则检测 exec 命令是否只读（cat/ls/grep/git status 等）。ThreadManager.runTurn() 根据 `mode` 参数切换系统提示和工具集。前端：ChatInput 新增 Eye 图标切换 Review 模式，`sendMessage` 传递 `mode: 'review'` 到后端。完整链路：前端 toggle → JSON-RPC turn/start(mode) → MessageProcessor → ThreadManager → review prompt + 只读工具过滤。
 
 **配置与存储：**
 - **分层配置系统**（M2）— 4 层叠加：全局 `~/.chitu/config.json` → 项目 `.chitu/config.json` → 环境变量 → CLI 参数。后者覆盖前者。支持类型验证。7 个文件：types.ts（类型定义）、defaults.ts（默认值）、loader.ts（文件加载）、merge.ts（4 层合并）、env.ts（环境变量映射）、validate.ts（验证）、index.ts（入口 + 单例缓存）
@@ -265,7 +269,14 @@ CLI (readline)
 - **为什么**：多阶段构建让最终镜像只含运行时必需文件，大幅减小镜像体积。CI 拆成独立 job 让每个阶段可独立失败和缓存。docker job 单独验证镜像构建，确保 Dockerfile 不broken。前端用 nginx 托管而非 Node.js serve，性能更好。
 - **Trade-off**：多阶段构建增加 Dockerfile 复杂度，但换来的是 ~5x 镜像体积缩减。docker-compose 的 frontend 服务依赖 server healthcheck 通过后才启动，确保前端可访问后端。
 
+### M14: Review 模式
+- **决策**：通过 system prompt + 工具过滤双重约束实现只读模式，而非硬编码禁止写入操作
+- **为什么**：system prompt 引导 Agent 行为（只分析不修改 + 结构化输出审查结果），工具过滤作为硬性保障（只注册只读工具到 Agent Loop）。exec 工具额外做命令只读检测（正则匹配 cat/ls/grep/git status 等），防止 Agent 通过 shell 命令间接写入。双层防护比单层更可靠。
+- **Trade-off**：exec 工具的只读命令检测用正则匹配，可能遗漏边缘情况（如 `python -c "open('x','w')"`）。但对于常见场景足够，且 system prompt 层面已经约束了 Agent 不应尝试写入。
+
 ## 变更日志
+
+- 2026-04-19: M14 完成 — 新增 src/agent/review-prompt.ts（review 系统提示 + 只读工具过滤 + 只读命令检测）。ThreadManager 根据 mode 切换系统提示和工具集。前端 ChatInput 新增 Review 模式切换按钮（Eye 图标）。完整链路：前端 toggle → JSON-RPC turn/start(mode) → MessageProcessor → ThreadManager → review prompt + 只读工具。
 
 - 2026-04-19: M13 完成 — 新增 Dockerfile（3 阶段构建：deps/build/production）、.dockerignore、docker-compose.yml（server + frontend 两个服务 + healthcheck + 数据卷）、.github/workflows/ci.yml（3 个 job：lint+typecheck、build、docker build 验证）。
 

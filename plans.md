@@ -14,7 +14,7 @@
 - [x] M11: CLI 模式（终端界面）
 - [x] M12: 沙盒执行（容器隔离）
 - [x] M13: Docker + CI/CD
-- [ ] M14: Review 模式
+- [x] M14: Review 模式
 - [ ] M15: 增强监控面板（对标 Hermes HUD）
 - [ ] M16: 多 Agent 协作（子任务拆分 + 并行）
 - [ ] M17: 代码语义索引（AST + Embedding 搜索）
@@ -277,7 +277,15 @@
   - 前端可展示审查结果
   - `npx tsc --noEmit` 通过
 - **Verification Commands**: `npx tsc --noEmit`
-- **Status**: pending
+- **Status**: completed
+- **Started**: 1776559877159
+- **Completed**: 1776560281528
+
+### Decisions
+- Review 模式采用 system prompt + 工具过滤双重约束。system prompt 引导 Agent 只审查不修改并输出结构化结果（摘要/问题列表/建议修改/总体评价），工具过滤作为硬性保障只注册只读工具。exec 工具额外做命令只读检测（正则匹配 cat/ls/grep/git status 等），防止通过 shell 命令间接写入。
+
+### Notes
+- 新增 src/agent/review-prompt.ts（buildReviewSystemPrompt + isToolAllowedInReview + isReadOnlyCommand）。修改 src/thread/manager.ts（import review 模块，runTurn 根据 mode 切换 prompt 和工具过滤）。修改 web-ui/src/components/ChatInput.tsx（新增 Eye 图标 Review 模式切换按钮 + 提示文字）。完整链路：前端 toggle → sendMessage(mode) → JSON-RPC turn/start(mode) → MessageProcessor → ThreadManager.runTurn(mode) → review prompt + 只读工具。前后端 npx tsc --noEmit 均通过。
 
 ## M15: 增强监控面板（对标 Hermes HUD）
 - **Scope**: 参考 https://github.com/joeynyc/hermes-hudui 仓库，将赤兔的监控面板从基础指标扩展为丰富的多维度监控系统。后端扩展 `/dashboard` 端点，从 rollout JSONL 中提取工具使用频率和每日活动统计；从 memories 目录读取记忆状态（条目数、按类别统计）；增加 token 成本估算（按模型/按天）。前端增加 Tab 导航（总览/Token 成本/记忆/工具使用），新增 Sparkline 折线图组件（每日活动趋势）、容量条组件（value/max 可视化）、工具使用频率横向条形图（Top N）、增长快照 Delta 对比。保持 Discord 风格 UI 一致性。

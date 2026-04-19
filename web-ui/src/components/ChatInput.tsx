@@ -1,11 +1,12 @@
 import { useState, useRef, useCallback } from 'react'
 import { useChituSocket } from '../hooks/useChituSocket'
 import { useAppStore } from '../lib/store'
-import { Send, Square, Zap, ZapOff } from 'lucide-react'
+import { Send, Square, Zap, ZapOff, Eye } from 'lucide-react'
 
 export function ChatInput() {
   const [input, setInput] = useState('')
   const [autoMode, setAutoMode] = useState(false)
+  const [reviewMode, setReviewMode] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const { sendMessage, interruptTurn } = useChituSocket()
   const { currentThreadId, turnStatus } = useAppStore()
@@ -21,7 +22,7 @@ export function ChatInput() {
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
 
     try {
-      await sendMessage(msg, autoMode || undefined)
+      await sendMessage(msg, autoMode || undefined, reviewMode ? 'review' : undefined)
     } catch (err: any) {
       console.error('发送失败:', err.message)
     }
@@ -56,6 +57,14 @@ export function ChatInput() {
           rows={1}
           className="flex-1 bg-transparent text-white text-sm resize-none outline-none placeholder-[#888] disabled:opacity-50 max-h-[200px] py-1 px-2"
         />
+        {/* Review 模式开关 */}
+        <button
+          onClick={() => setReviewMode(!reviewMode)}
+          className={`p-2 rounded transition-colors ${reviewMode ? 'bg-[#3ba55c] text-white' : 'text-[#888] hover:text-white hover:bg-[#3a3a3a]'}`}
+          title={reviewMode ? 'Review 模式已开启（只审查不修改）' : '开启 Review 模式'}
+        >
+          <Eye className="w-4 h-4" />
+        </button>
         {/* 自主运行开关 */}
         <button
           onClick={() => setAutoMode(!autoMode)}
@@ -86,6 +95,11 @@ export function ChatInput() {
       {autoMode && (
         <div className="text-[11px] text-[#faa61a] mt-1 px-1">
           自主运行模式：所有工具操作将被自动批准，无需手动确认
+        </div>
+      )}
+      {reviewMode && (
+        <div className="text-[11px] text-[#3ba55c] mt-1 px-1">
+          Review 模式：Agent 只审查代码，不会修改任何文件
         </div>
       )}
     </div>

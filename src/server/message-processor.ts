@@ -227,6 +227,7 @@ export class MessageProcessor {
     const threadId = params?.threadId as string
     const message = params?.message as string
     const autoApprove = params?.autoApprove as boolean
+    const mode = params?.mode as 'default' | 'review' | undefined
 
     if (!threadId || !message) {
       this.send(ws, createError(id, INVALID_PARAMS, 'Missing threadId or message'))
@@ -255,6 +256,7 @@ export class MessageProcessor {
     this.manager.runTurn(threadId, message, {
       signal: controller.signal,
       onApprovalNeeded: approvalCallback,
+      mode,
     }).catch((err) => {
       // runTurn 内部已处理错误（emit turn/completed with failed）
       // 这里只清理 AbortController
