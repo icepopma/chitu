@@ -1,0 +1,40 @@
+version: "3.9"
+
+services:
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - NODE_ENV=production
+      - ZHIPU_API_KEY=${ZHIPU_API_KEY}
+      - ZHIPU_CODING_ENDPOINT=${ZHIPU_CODING_ENDPOINT:-}
+      - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
+      - CHITU_API_KEY=${CHITU_API_KEY:-}
+      - CHITU_JWT_SECRET=${CHITU_JWT_SECRET:-}
+      - CHITU_AUTH_DISABLED=${CHITU_AUTH_DISABLED:-}
+    volumes:
+      - chitu-data:/app/chitu-data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:8080/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  frontend:
+    image: nginx:alpine
+    ports:
+      - "3000:80"
+    volumes:
+      - ./web-ui/dist:/usr/share/nginx/html:ro
+    depends_on:
+      server:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  chitu-data:

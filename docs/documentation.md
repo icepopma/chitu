@@ -21,7 +21,8 @@
 - M10: ✅ 已完成（WebSocket 认证）
 - M11: ✅ 已完成（CLI 模式）
 - M12: ✅ 已完成（沙盒执行）
-- M13-M22: 待处理
+- M13: ✅ 已完成（Docker + CI/CD）
+- M14-M22: 待处理
 
 ### 优先级分组
 | 优先级 | 范围 | Milestones |
@@ -82,6 +83,11 @@
 
 **沙盒执行：**
 - **Sandbox 隔离**（M12）— exec 工具在沙盒中执行命令，macOS 使用 `sandbox-exec`（Seatbelt SBPL 策略），Linux 预留 Docker 接口。策略采用白名单模式（deny default）：允许读取系统路径和项目目录、允许写入指定可写路径（node_modules/.git/dist/tmp/chitu-data）和 /tmp 临时目录、禁止网络访问、允许进程创建和 IPC。沙盒可配置开关（Tool 接口 `sandboxEnabled` 属性）。策略文件写入 /tmp 临时文件，执行完毕后清理。exec 工具输出带 `[sandbox: macos]` 标记。新增 `src/sandbox/` 目录（4 个文件）。
+
+**Docker + CI/CD：**
+- **多阶段 Dockerfile**（M13）— 3 阶段构建：deps（安装依赖）→ build（tsc 编译后端 + Vite 构建前端）→ production（slim 镜像，只含生产依赖和构建产物）。生产镜像基于 `node:22-bookworm-slim`，最终大小远小于完整构建镜像。
+- **docker-compose.yml**（M13）— 两个服务：server（Node.js 后端，端口 8080，含 healthcheck）+ frontend（nginx:alpine 托管前端静态文件，端口 3000）。支持 Neon PostgreSQL 环境变量透传，数据卷持久化 `chitu-data`。
+- **GitHub Actions CI**（M13）— 3 个 job：lint-and-typecheck（后端 tsc + 前端 tsc + ESLint）、build（构建后端和前端）、docker（`docker build` 验证镜像构建成功）。触发条件：push/PR 到 main 分支。
 
 **配置与存储：**
 - **分层配置系统**（M2）— 4 层叠加：全局 `~/.chitu/config.json` → 项目 `.chitu/config.json` → 环境变量 → CLI 参数。后者覆盖前者。支持类型验证。7 个文件：types.ts（类型定义）、defaults.ts（默认值）、loader.ts（文件加载）、merge.ts（4 层合并）、env.ts（环境变量映射）、validate.ts（验证）、index.ts（入口 + 单例缓存）
@@ -159,6 +165,10 @@ src/
 web-ui/         — React 19 + Vite 8 前端（Discord 风格）
 docs/           — prompt.md + implement.md + documentation.md + 架构文档
 plans.md        — 里程碑执行计划（22 个 milestones，唯一真相源）
+Dockerfile      — 多阶段 Docker 构建（deps → build → production）
+docker-compose.yml — server + frontend 容器编排
+.dockerignore   — Docker 构建排除文件
+.github/workflows/ci.yml — GitHub Actions CI（lint + typecheck + build + docker）
 ```
 
 ## 架构
@@ -195,7 +205,7 @@ CLI (readline)
 - ~~WebSocket 无认证（M10）~~ ✅ 已完成
 - ~~无 CLI 终端模式（M11）~~ ✅ 已完成
 - ~~exec 工具无沙盒隔离（M12）~~ ✅ 已完成
-- 无 CI/CD（M13）
+- 无 CI/CD（M13）→ ✅ 已完成
 - 监控面板指标不够丰富，需对标 Hermes HUD 增强（M15）
 
 ## 设计决策记录
@@ -250,9 +260,14 @@ CLI (readline)
 - **为什么**：`sandbox-exec` 是 macOS 原生沙盒机制，无需额外依赖，策略用 S-expression 格式描述。白名单模式（默认拒绝所有，只放行必要操作）比黑名单更安全。参考 Codex `codex-rs/sandboxing/` 的设计。
 - **Trade-off**：`sandbox-exec` 被 Apple 标记为 deprecated（实际仍可用）。Linux 沙盒需 Docker（M13 完善）。Seatbelt 策略配置较复杂，首次调试可能需要放宽权限。
 
+### M13: Docker + CI/CD
+- **决策**：多阶段 Docker 构建（deps → build → production），CI 用 3 个独立 job（lint、build、docker）
+- **为什么**：多阶段构建让最终镜像只含运行时必需文件，大幅减小镜像体积。CI 拆成独立 job 让每个阶段可独立失败和缓存。docker job 单独验证镜像构建，确保 Dockerfile 不broken。前端用 nginx 托管而非 Node.js serve，性能更好。
+- **Trade-off**：多阶段构建增加 Dockerfile 复杂度，但换来的是 ~5x 镜像体积缩减。docker-compose 的 frontend 服务依赖 server healthcheck 通过后才启动，确保前端可访问后端。
+
 ## 变更日志
 
-- 2026-04-19: M12 完成 — 新增 src/sandbox/ 目录（4 个文件：types.ts、seatbelt.ts、executor.ts、index.ts），沙盒执行隔离。macOS 使用 sandbox-exec + Seatbelt SBPL 策略（白名单模式：只读项目目录 + 指定可写路径 + 禁止网络）。修改 src/tools/base.ts（Tool 接口新增 sandboxEnabled）、src/tools/exec.ts（集成 execInSandbox）。
+- 2026-04-19: M13 完成 — 新增 Dockerfile（3 阶段构建：deps/build/production）、.dockerignore、docker-compose.yml（server + frontend 两个服务 + healthcheck + 数据卷）、.github/workflows/ci.yml（3 个 job：lint+typecheck、build、docker build 验证）。
 
 - 2026-04-19: M11 完成 — 新增 src/cli/index.ts（154 行），readline TUI + 进程内架构。支持交互式对话、流式输出、内联审批、SIGINT 退出。package.json 新增 bin.chitu 和 npm run cli。
 

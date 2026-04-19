@@ -13,7 +13,7 @@
 - [x] M10: WebSocket 认证（API Key + JWT）
 - [x] M11: CLI 模式（终端界面）
 - [x] M12: 沙盒执行（容器隔离）
-- [ ] M13: Docker + CI/CD
+- [x] M13: Docker + CI/CD
 - [ ] M14: Review 模式
 - [ ] M15: 增强监控面板（对标 Hermes HUD）
 - [ ] M16: 多 Agent 协作（子任务拆分 + 并行）
@@ -258,7 +258,15 @@
   - GitHub Actions CI 配置存在且语法正确
   - `npx tsc --noEmit` 通过
 - **Verification Commands**: `npx tsc --noEmit`, `docker build -t chitu .`
-- **Status**: pending
+- **Status**: completed
+- **Started**: 1776559687961
+- **Completed**: 1776559849308
+
+### Decisions
+- 多阶段 Docker 构建（deps → build → production），前端用 nginx:alpine 托管。CI 拆成 3 个独立 job（lint-and-typecheck、build、docker），每个 job 可独立缓存和失败。docker-compose 用 healthcheck 确保 server 就绪后 frontend 才启动。
+
+### Notes
+- 新增文件：Dockerfile（3 阶段）、.dockerignore、docker-compose.yml（server+frontend+healthcheck+volume）、.github/workflows/ci.yml（3 jobs）。npx tsc --noEmit 通过。Docker build 验证需要 Docker 运行环境。
 
 ## M14: Review 模式
 - **Scope**: 新增 `review` 模式：Agent 只审查不修改。专用 system prompt（审查 diff 格式输出）。前端展示审查结果（问题列表 + 建议修改）。参考 Codex `codex-rs/core/review_prompt.md`。
