@@ -36,7 +36,6 @@ export function ToolUsageTab({ data }: ToolUsageTabProps) {
   const totalCalls = toolUsage.reduce((sum: number, t: any) => sum + t.count, 0)
   const uniqueTools = toolUsage.length
   const dailyToolCalls = dailyActivity.map((d: any) => d.toolCalls)
-  const dailyLabels = dailyActivity.map((d: any) => d.date)
 
   return (
     <div className="space-y-4">
@@ -74,13 +73,7 @@ export function ToolUsageTab({ data }: ToolUsageTabProps) {
       {/* 每日工具调用趋势 */}
       <Card title="每日工具调用趋势" icon={<TrendingUp className="w-3.5 h-3.5 text-[#faa61a]" />}>
         {dailyToolCalls.length >= 2 ? (
-          <div>
-            <Sparkline data={dailyToolCalls} width={800} height={80} color="#faa61a" />
-            <div className="flex justify-between text-[10px] text-[#555] mt-1">
-              <span>{dailyLabels[0]}</span>
-              <span>{dailyLabels[dailyLabels.length - 1]}</span>
-            </div>
-          </div>
+          <Sparkline data={dailyToolCalls} width={800} height={100} color="#faa61a" showValues />
         ) : (
           <div className="text-sm text-[#888] text-center py-6">数据不足，至少需要 2 天</div>
         )}

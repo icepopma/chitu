@@ -660,17 +660,20 @@ export class ThreadManager {
     // 从文件系统获取真实数据
     let threadCount = 0
     let turnCount = this._totalTurns
+    let tokenCount = this._totalTokens
+    let iterationCount = this._totalIterations
     const dir = './chitu-data/threads'
     if (existsSync(dir)) {
       const files = readdirSync(dir).filter((f: string) => f.endsWith('.json'))
       threadCount = files.length
-      // 从线程文件中统计 turns（每个 user_message 视为一个 turn）
+      // 从线程文件中统计（仅在内存计数为 0 时，即服务重启后）
       if (turnCount === 0) {
         for (const file of files) {
           try {
             const raw = readFileSync(join(dir, file), 'utf-8')
             const data = JSON.parse(raw) as Thread
             turnCount += data.items.filter(i => i.type === 'user_message').length
+            iterationCount += data.items.filter(i => i.type === 'tool_call').length
           } catch { /* skip */ }
         }
       }
@@ -682,8 +685,8 @@ export class ThreadManager {
       totalThreads: threadCount,
       totalTurns: turnCount,
       activeTurns: 0,
-      totalTokens: this._totalTokens,
-      totalIterations: this._totalIterations,
+      totalTokens: tokenCount,
+      totalIterations: iterationCount,
     }
   }
 
