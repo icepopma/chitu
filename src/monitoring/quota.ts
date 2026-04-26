@@ -19,6 +19,17 @@ import { logger } from './logger.js'
 
 export type PlanType = 'free' | 'pro' | 'enterprise'
 
+interface QuotaRow {
+	id: string
+	scope: string
+	scope_id: string
+	plan: string
+	monthly_token_limit: number | null
+	monthly_turn_limit: number | null
+	created_at: number
+	updated_at: number
+}
+
 export interface QuotaPlan {
 	/** 套餐名称 */
 	name: string
@@ -99,10 +110,10 @@ export function getPlanDefinition(plan: PlanType): QuotaPlan {
 }
 
 /** 列出所有可用套餐 */
-export function listPlans(): Array<PlanType & { definition: QuotaPlan }> {
-	return (Object.entries(PLANS) as [PlanType, QuotaPlan][]).map(([key, def]) => ({
-		...key,
-		definition: def,
+export function listPlans(): Array<{ plan: PlanType; definition: QuotaPlan }> {
+	return (Object.entries(PLANS) as [PlanType, QuotaPlan][]).map(([plan, definition]) => ({
+		plan,
+		definition,
 	}))
 }
 
@@ -174,17 +185,17 @@ export async function getQuotaConfig(
 		SELECT id, scope, scope_id, plan, monthly_token_limit, monthly_turn_limit, created_at, updated_at
 		FROM quotas
 		WHERE scope = ${scope} AND scope_id = ${scopeId}
-	`
+	` as QuotaRow[]
 
 	if (rows.length === 0) return null
-	const row = rows[0] as any
+	const row = rows[0]
 	return {
 		id: row.id,
-		scope: row.scope,
+		scope: row.scope as "user" | "org",
 		scopeId: row.scope_id,
 		plan: row.plan as PlanType,
-		monthlyTokenLimit: row.monthly_token_limit,
-		monthlyTurnLimit: row.monthly_turn_limit,
+		monthlyTokenLimit: row.monthly_token_limit ?? 0,
+		monthlyTurnLimit: row.monthly_turn_limit ?? 0,
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 	}

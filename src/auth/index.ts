@@ -136,15 +136,15 @@ function verifyJwt(token: string, secret: string): AuthResult {
 		}
 
 		return { success: true, method: 'jwt', userId: payload.userId, orgId: payload.orgId }
-	} catch (err: any) {
-		return { success: false, reason: `JWT verification failed: ${err.message}` }
+	} catch (err: unknown) {
+		return { success: false, reason: `JWT verification failed: ${err instanceof Error ? err.message : String(err)}` }
 	}
 }
 
 /**
  * 从 HTTP upgrade 请求中提取 token 参数
  */
-export function extractTokenFromRequest(req: any): string | undefined {
+export function extractTokenFromRequest(req: { url?: string }): string | undefined {
 	const url = req.url || ''
 	const match = url.match(/[?&]token=([^&]+)/)
 	return match ? decodeURIComponent(match[1]) : undefined

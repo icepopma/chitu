@@ -4,7 +4,7 @@
  * 服务器信息 + 运行指标 + 里程碑进度 + 里程碑列表 + 活动记录 + 每日活动 Sparkline
  */
 
-import { Cpu, Zap, Hash, RefreshCw, Clock, MessageSquare, Target, Activity, CheckCircle2, Circle, Loader2, XCircle } from 'lucide-react'
+import { Cpu, Zap, Hash, RefreshCw, Clock, MessageSquare, Target, Activity, CheckCircle2, Circle, Loader2, XCircle, Layers } from 'lucide-react'
 import { Sparkline } from './Sparkline'
 
 interface OverviewTabProps {
@@ -186,7 +186,8 @@ export function OverviewTab({ data }: OverviewTabProps) {
 
   const dailyMessages = analytics?.dailyActivity?.map((d: any) => d.messages) || []
   const dailyTurns = analytics?.dailyActivity?.map((d: any) => d.turns) || []
-  const dailyLabels = analytics?.dailyActivity?.map((d: any) => d.date) || []
+
+
 
   return (
     <div className="space-y-4">
@@ -215,10 +216,10 @@ export function OverviewTab({ data }: OverviewTabProps) {
 
         <Card title="运行指标" icon={<Zap className="w-3.5 h-3.5 text-[#faa61a]" />}>
           <div className="grid grid-cols-2 gap-4">
+            <StatBlock value={status.totalThreads} label="Threads" icon={<Layers className="w-4 h-4 text-[#5865f2]" />} />
             <StatBlock value={status.totalTurns} label="Turns" icon={<MessageSquare className="w-4 h-4 text-[#5865f2]" />} />
             <StatBlock value={formatTokens(status.totalTokens)} label="Tokens" icon={<Hash className="w-4 h-4 text-[#43b581]" />} />
             <StatBlock value={status.totalIterations} label="迭代次数" icon={<RefreshCw className="w-4 h-4 text-[#faa61a]" />} />
-            <StatBlock value={formatUptime(status.uptime)} label="服务器时长" icon={<Clock className="w-4 h-4 text-[#888]" />} />
           </div>
         </Card>
 
@@ -273,26 +274,14 @@ export function OverviewTab({ data }: OverviewTabProps) {
       <div className="grid grid-cols-2 gap-4">
         <Card title="每日消息趋势" icon={<MessageSquare className="w-3.5 h-3.5 text-[#43b581]" />}>
           {dailyMessages.length >= 2 ? (
-            <div>
-              <Sparkline data={dailyMessages} width={400} height={80} color="#43b581" />
-              <div className="flex justify-between text-[10px] text-[#555] mt-1">
-                <span>{dailyLabels[0]}</span>
-                <span>{dailyLabels[dailyLabels.length - 1]}</span>
-              </div>
-            </div>
+            <Sparkline data={dailyMessages} width={400} height={100} color="#43b581" showValues />
           ) : (
             <div className="text-sm text-[#888] text-center py-4">数据不足，至少需要 2 天</div>
           )}
         </Card>
         <Card title="每日 Turn 趋势" icon={<RefreshCw className="w-3.5 h-3.5 text-[#5865f2]" />}>
           {dailyTurns.length >= 2 ? (
-            <div>
-              <Sparkline data={dailyTurns} width={400} height={80} color="#5865f2" />
-              <div className="flex justify-between text-[10px] text-[#555] mt-1">
-                <span>{dailyLabels[0]}</span>
-                <span>{dailyLabels[dailyLabels.length - 1]}</span>
-              </div>
-            </div>
+            <Sparkline data={dailyTurns} width={400} height={100} color="#5865f2" showValues />
           ) : (
             <div className="text-sm text-[#888] text-center py-4">数据不足，至少需要 2 天</div>
           )}

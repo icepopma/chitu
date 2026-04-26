@@ -11,9 +11,17 @@ interface SparklineProps {
   height?: number
   color?: string
   label?: string
+  /** 显示数值标签 */
+  showValues?: boolean
 }
 
-export function Sparkline({ data, width = 240, height = 60, color = '#5865f2', label }: SparklineProps) {
+function formatVal(v: number): string {
+  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`
+  if (v >= 1_000) return `${(v / 1_000).toFixed(1)}K`
+  return String(Math.round(v))
+}
+
+export function Sparkline({ data, width = 240, height = 60, color = '#5865f2', label, showValues = true }: SparklineProps) {
   if (data.length < 2) {
     return (
       <div className="flex items-center justify-center text-xs text-[#666]" style={{ width, height }}>
@@ -26,15 +34,16 @@ export function Sparkline({ data, width = 240, height = 60, color = '#5865f2', l
   const min = Math.min(...data, 0)
   const range = max - min || 1
   const padding = 4
+  const chartH = showValues ? height - 14 : height
 
   const points = data.map((v, i) => {
     const x = padding + (i / (data.length - 1)) * (width - padding * 2)
-    const y = height - padding - ((v - min) / range) * (height - padding * 2)
+    const y = chartH - padding - ((v - min) / range) * (chartH - padding * 2)
     return `${x},${y}`
   })
 
   const pathD = `M${points.join(' L')}`
-  const areaD = `${pathD} L${padding + ((data.length - 1) / (data.length - 1)) * (width - padding * 2)},${height - padding} L${padding},${height - padding} Z`
+  const areaD = `${pathD} L${padding + ((data.length - 1) / (data.length - 1)) * (width - padding * 2)},${chartH - padding} L${padding},${chartH - padding} Z`
 
   return (
     <div className="flex flex-col gap-1">
@@ -50,13 +59,20 @@ export function Sparkline({ data, width = 240, height = 60, color = '#5865f2', l
         <path d={pathD} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
         {data.map((v, i) => {
           const x = padding + (i / (data.length - 1)) * (width - padding * 2)
-          const y = height - padding - ((v - min) / range) * (height - padding * 2)
+          const y = chartH - padding - ((v - min) / range) * (chartH - padding * 2)
           return (
-            <circle key={i} cx={x} cy={y} r="3" fill={color} opacity={i === data.length - 1 ? 1 : 0.4}
-              className="hover:opacity-100 hover:r-4 transition-opacity cursor-pointer"
-            >
-              <title>{String(v)}</title>
-            </circle>
+            <g key={i}>
+              <circle cx={x} cy={y} r="3" fill={color} opacity={i === data.length - 1 ? 1 : 0.4}
+                className="hover:opacity-100 transition-opacity cursor-pointer"
+              >
+                <title>{String(v)}</title>
+              </circle>
+              {showValues && (
+                <text x={x} y={height - 1} textAnchor="middle" fill="#888" fontSize="9" fontFamily="monospace">
+                  {formatVal(v)}
+                </text>
+              )}
+            </g>
           )
         })}
       </svg>

@@ -27,6 +27,13 @@ import { authenticateConnection, extractTokenFromRequest } from '../auth/index.j
 import { buildAnalytics } from './dashboard-analytics.js'
 import { registerUploadHandler, ensureUploadDir } from '../upload/index.js'
 
+/** Dashboard 事件条目（rollout + 内存缓冲） */
+interface DashboardEvent {
+  type: string
+  timestamp: number
+  data: unknown
+}
+
 export interface AppServerOptions {
   port?: number
   dataDir?: string
@@ -121,13 +128,11 @@ export function createAppServer(options?: AppServerOptions) {
 
   httpServer.listen(port)
 
-  logger.info('Chitu App Server started', { port, dataDir: options?.dataDir || './chitu-data/threads' })
-  console.log(`\n🚀 Chitu App Server`)
-  console.log(`   WebSocket: ws://localhost:${port}`)
-  console.log(`   Health:    http://localhost:${port}/health`)
-  console.log(`   Metrics:   http://localhost:${port}/metrics`)
-  console.log(`   Status:    http://localhost:${port}/status`)
-  console.log(`   数据目录: ${options?.dataDir || './chitu-data/threads'}\n`)
+  logger.info('Chitu App Server started', {
+    port,
+    dataDir: options?.dataDir || './chitu-data/threads',
+    endpoints: { ws: `ws://localhost:${port}`, health: `http://localhost:${port}/health`, metrics: `http://localhost:${port}/metrics` },
+  })
 
   // M7: 文件监听 — FileWatcher + FileChangeBuffer + SkillsWatcher
   const fileChangeBuffer = new FileChangeBuffer()
@@ -194,20 +199,20 @@ function buildDashboardData(manager: ThreadManager, projectRoot: string, process
 
   // 最近事件：优先内存缓冲，不够时从磁盘补充
   const memEvents = processor.getRecentEvents()
-  let recentEvents: Array<{ type: string; timestamp: number; data: any }>
+  let recentEvents: DashboardEvent[]
   if (memEvents.length >= 10) {
     recentEvents = memEvents.slice(-30)
   } else {
     const fileEvents = loadRecentRolloutEvents(projectRoot, 30)
     // 合并去重
     const seen = new Set<string>()
-    const merged: typeof memEvents = []
+    const merged: DashboardEvent[] = []
     for (const e of [...fileEvents, ...memEvents]) {
       const ts = typeof e.timestamp === 'number' ? e.timestamp : 0
       const key = `${ts}:${e.type}`
       if (!seen.has(key)) {
         seen.add(key)
-        merged.push({ type: e.type, timestamp: ts, data: e.data })
+        merged.push({ type: e.type, timestamp: ts, data: e.data as unknown })
       }
     }
     merged.sort((a, b) => a.timestamp - b.timestamp)
@@ -240,7 +245,7 @@ function buildDashboardData(manager: ThreadManager, projectRoot: string, process
 }
 
 /** 读取最近 N 条 rollout events（从多个线程文件中聚合） */
-function loadRecentRolloutEvents(projectRoot: string, limit: number): Array<{ type: string; timestamp: number; data: any }> {
+function loadRecentRolloutEvents(projectRoot: string, limit: number): DashboardEvent[] {
   const rolloutDir = join(projectRoot, 'chitu-data', 'rollouts')
   try {
     // 按修改时间排序，最新的文件优先
@@ -249,7 +254,7 @@ function loadRecentRolloutEvents(projectRoot: string, limit: number): Array<{ ty
       .map(f => ({ name: f, mtime: statSync(join(rolloutDir, f)).mtimeMs }))
       .sort((a, b) => b.mtime - a.mtime)
       .map(f => f.name)
-    const events: Array<{ type: string; timestamp: number; data: any }> = []
+    const events: DashboardEvent[] = []
     // 读最近 5 个文件（覆盖多个线程的活动）
     for (const file of files.slice(0, 5)) {
       const content = readFileSync(join(rolloutDir, file), 'utf-8')

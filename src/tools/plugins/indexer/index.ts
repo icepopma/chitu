@@ -4,8 +4,8 @@
  * 作为 Plugin 加载到 PluginLoader，与其他工具（exec、files、git 等）一致。
  */
 
-import type { Plugin } from '../plugin-types.js'
-import { codeSearchTool } from '../../indexer/tool.js'
+import type { Plugin } from '../../plugin-types.js'
+import { codeSearchTool } from '../../../indexer/tool.js'
 
 /** Indexer 插件 — 提供代码符号搜索工具 */
 export const indexerPlugin: Plugin = {

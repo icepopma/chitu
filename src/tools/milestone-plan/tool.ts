@@ -1,6 +1,8 @@
 import type { Tool, ToolResult } from '../base.js'
 import { execSync } from 'node:child_process'
-import { loadMilestonePlan, saveMilestonePlan, getNextMilestone, getCurrentMilestone } from './parser.js'
+import { existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { loadMilestonePlan, saveMilestonePlan, getNextMilestone, getCurrentMilestone, setActivePlan, resolvePlanPath } from './parser.js'
 
 function getProjectRoot(): string {
   return process.cwd()
@@ -8,13 +10,13 @@ function getProjectRoot(): string {
 
 export const milestonePlanTool: Tool = {
   name: 'milestone_plan',
-  description: `Read and manage milestone-driven implementation plans from plans.md. Commands: "read" (full plan), "next" (get next pending milestone), "start" (mark milestone in_progress), "complete" (mark completed + auto git checkpoint), "fail" (mark failed), "note" (append implementation note), "decision" (append design decision). Log notes and decisions as you work so the user can see progress.`,
+  description: `Read and manage milestone-driven implementation plans. Commands: "read" (full plan), "next" (get next pending milestone), "start" (mark milestone in_progress), "complete" (mark completed + auto git checkpoint), "fail" (mark failed), "note" (append implementation note), "decision" (append design decision), "set" (switch active plan file, e.g. "set docs/new-plan.md"). Log notes and decisions as you work so the user can see progress.`,
   parameters: {
     type: 'object',
     properties: {
       command: {
         type: 'string',
-        enum: ['read', 'next', 'start', 'complete', 'fail', 'note', 'decision'],
+        enum: ['read', 'next', 'start', 'complete', 'fail', 'note', 'decision', 'set'],
         description: 'The milestone command to execute',
       },
       milestoneId: {
@@ -29,6 +31,10 @@ export const milestonePlanTool: Tool = {
         type: 'string',
         description: 'Why the milestone status was changed (optional)',
       },
+      path: {
+        type: 'string',
+        description: 'Plan file path relative to project root (required for set command, e.g. "docs/commercialized-progress.md")',
+      },
     },
     required: ['command'],
   },
@@ -39,10 +45,32 @@ export const milestonePlanTool: Tool = {
     const text = args.text as string | undefined
     const root = getProjectRoot()
 
+    // 'set' doesn't need an existing plan
+    if (command === 'set') {
+      const planPath = args.path as string | undefined
+      if (!planPath) {
+        return { content: 'Error: path is required for set command (e.g. "docs/commercialized-progress.md")', isError: true }
+      }
+      const fullPath = join(root, planPath)
+      if (!existsSync(fullPath)) {
+        return { content: `Error: file not found: ${planPath}`, isError: true }
+      }
+      setActivePlan(root, planPath)
+
+      // Try to parse it as a milestone plan
+      const plan = loadMilestonePlan(root)
+      if (plan && plan.milestones.length > 0) {
+        const summary = plan.milestones.map(m => `${m.id}: ${m.title} [${m.status}]`).join('\n')
+        return { content: `Active plan set to ${planPath}\n\nPlan has ${plan.milestones.length} milestones:\n${summary}` }
+      }
+      return { content: `Active plan set to ${planPath}\nFile exists but is not in milestone format. Agent can use it as reference.` }
+    }
+
     const plan = loadMilestonePlan(root)
 
     if (!plan) {
-      return { content: 'No plans.md found in project root. Create a plans.md with milestone sections to use this tool.' }
+      const currentFile = resolvePlanPath(root)
+      return { content: `No milestone plan found at ${currentFile}. Use "milestone_plan set <path>" to point to a plan file, or create a plans.md with milestone sections.` }
     }
 
     switch (command) {

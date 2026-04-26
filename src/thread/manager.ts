@@ -25,6 +25,7 @@ import { HookDispatcher } from '../hooks/dispatcher.js'
 import { recordTurnStart, recordTurnComplete, updateTurnEnvSnapshot, getLatestEnvSnapshot } from '../db/crash-recovery.js'
 import { isDbAvailable } from '../db/connection.js'
 import { chituMetrics } from '../monitoring/metrics.js'
+import { logger } from '../monitoring/logger.js'
 import { recordUsage } from '../monitoring/usage.js'
 import { checkQuota } from '../monitoring/quota.js'
 import type { FileChangeBuffer } from '../watcher/file-change-buffer.js'
@@ -130,7 +131,7 @@ export class ThreadManager {
     if (event.type !== 'item/delta') {
       const threadId = this.getThreadIdFromEvent(event)
       if (threadId) {
-        this.recorder.record(threadId, event).catch(() => {})
+        this.recorder.record(threadId, event).catch(err => logger.warn('Failed to record rollout event', { threadId, error: String(err) }))
       }
     }
     this.handler?.(event)
@@ -167,7 +168,7 @@ export class ThreadManager {
 
     // v14.4: session_start hook
     if (this.hookDispatcher) {
-      this.hookDispatcher.dispatchSessionEvent('session_start', { threadId: thread.id }).catch(() => {})
+      this.hookDispatcher.dispatchSessionEvent('session_start', { threadId: thread.id }).catch(err => logger.warn('Hook dispatch failed', { event: 'session_start', threadId: thread.id, error: String(err) }))
     }
 
     return thread
@@ -304,7 +305,7 @@ export class ThreadManager {
     this.emit({ type: 'turn/started', turn, thread })
 
     // M4: 持久化 turn 开始状态到数据库
-    recordTurnStart(turn.id, threadId).catch(() => {})
+    recordTurnStart(turn.id, threadId).catch(err => logger.warn('Failed to persist turn start', { turnId: turn.id, error: String(err) }))
 
     // M5: Metrics 计时器
     const stopTurnTimer = chituMetrics.startTurnTimer()
@@ -410,7 +411,7 @@ export class ThreadManager {
     this.envSnapshots.set(threadId, currentEnv)
 
     // M4: 持久化 envSnapshot 到数据库
-    updateTurnEnvSnapshot(threadId, currentEnv).catch(() => {})
+    updateTurnEnvSnapshot(threadId, currentEnv).catch(err => logger.warn('Failed to persist env snapshot', { threadId, error: String(err) }))
 
     // 4. 运行 Agent Loop
     let agentResult: AgentResult
@@ -571,23 +572,24 @@ export class ThreadManager {
           }
         },
       })
-    } catch (err: any) {
+    } catch (err: unknown) {
       completeStreamingItem('', true)
 
       turn.status = 'failed'
       turn.completedAt = Date.now()
+      const errMsg = err instanceof Error ? err.message : String(err)
       this.addItem(thread, {
         id: randomUUID(),
         type: 'assistant_message',
         status: 'completed',
-        content: `错误: ${err.message}`,
+        content: `错误: ${errMsg}`,
         isError: true,
         startedAt: Date.now(),
         completedAt: Date.now(),
       })
       this.emit({ type: 'turn/completed', turn, thread })
       await this.store.save(thread)
-      recordTurnComplete(turn.id, 'failed').catch(() => {})
+      recordTurnComplete(turn.id, 'failed').catch(err => logger.warn('Failed to persist turn completion (failed)', { turnId: turn.id, error: String(err) }))
       stopTurnTimer()
       chituMetrics.recordTurn('failed')
       throw err
@@ -599,7 +601,7 @@ export class ThreadManager {
 
     // M4: 持久化 turn 完成状态到数据库
     const turnDbStatus = turn.status === 'interrupted' ? 'interrupted' as const : 'completed' as const
-    recordTurnComplete(turn.id, turnDbStatus).catch(() => {})
+    recordTurnComplete(turn.id, turnDbStatus).catch(err => logger.warn('Failed to persist turn completion', { turnId: turn.id, error: String(err) }))
 
     thread.status = 'idle'
     thread.currentPlan = undefined
@@ -642,7 +644,7 @@ export class ThreadManager {
       iterations: agentResult.iterations,
       durationMs: turnDurationMs,
       status: turn.status,
-    }).catch(() => {})
+    }).catch(err => logger.warn('Failed to record usage', { threadId, error: String(err) }))
 
     return {
       content: agentResult.content,
@@ -658,17 +660,20 @@ export class ThreadManager {
     // 从文件系统获取真实数据
     let threadCount = 0
     let turnCount = this._totalTurns
+    let tokenCount = this._totalTokens
+    let iterationCount = this._totalIterations
     const dir = './chitu-data/threads'
     if (existsSync(dir)) {
       const files = readdirSync(dir).filter((f: string) => f.endsWith('.json'))
       threadCount = files.length
-      // 从线程文件中统计 turns（每个 user_message 视为一个 turn）
+      // 从线程文件中统计（仅在内存计数为 0 时，即服务重启后）
       if (turnCount === 0) {
         for (const file of files) {
           try {
             const raw = readFileSync(join(dir, file), 'utf-8')
             const data = JSON.parse(raw) as Thread
             turnCount += data.items.filter(i => i.type === 'user_message').length
+            iterationCount += data.items.filter(i => i.type === 'tool_call').length
           } catch { /* skip */ }
         }
       }
@@ -680,8 +685,8 @@ export class ThreadManager {
       totalThreads: threadCount,
       totalTurns: turnCount,
       activeTurns: 0,
-      totalTokens: this._totalTokens,
-      totalIterations: this._totalIterations,
+      totalTokens: tokenCount,
+      totalIterations: iterationCount,
     }
   }
 

@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
-    branches: [main]
+    branches: [main, develop]
 
 jobs:
   lint-and-typecheck:
@@ -34,6 +34,9 @@ jobs:
 
       - name: Frontend lint
         run: cd web-ui && npm run lint
+
+      - name: Unit tests
+        run: npm test
 
   build:
     name: Build

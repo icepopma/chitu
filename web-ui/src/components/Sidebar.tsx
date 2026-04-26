@@ -1,8 +1,9 @@
 import { useAppStore } from '../lib/store'
 import { useChituSocket } from '../hooks/useChituSocket'
-import { MessageSquare, Plus, Minus, Trash2, GitFork, Wifi, WifiOff, Activity } from 'lucide-react'
+import { MessageSquare, Plus, Trash2, GitFork, Wifi, WifiOff, Activity } from 'lucide-react'
 import { cn } from '../lib/utils'
 import { useState } from 'react'
+import { UserPanel } from './UserPanel'
 
 export function Sidebar({ onShowDashboard }: { onShowDashboard?: () => void }) {
   const { threads, currentThreadId } = useAppStore()
@@ -23,30 +24,37 @@ export function Sidebar({ onShowDashboard }: { onShowDashboard?: () => void }) {
 
   return (
     <div className="w-60 bg-[#1e1e1e] flex flex-col border-r border-[#2a2a2a] shrink-0">
-      {/* Header */}
-      <div className="h-12 flex items-center px-4 border-b border-[#2a2a2a] shrink-0">
-        <span className="text-base font-semibold text-white">🐰 赤兔</span>
-        <div className="ml-auto flex items-center gap-2">
+      {/* Header with new thread button */}
+      <div className="h-12 flex items-center px-3 border-b border-[#2a2a2a] shrink-0 gap-2">
+        <button
+          onClick={() => createThread('新对话')}
+          disabled={!connected}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-[#5865f2] hover:bg-[#4752c4] text-white text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          新建对话
+        </button>
+        <div className="ml-auto flex items-center gap-1.5">
           {onShowDashboard && (
             <button
               onClick={onShowDashboard}
               className="text-[#888] hover:text-[#5865f2] transition-colors"
               title="监控面板"
             >
-              <Activity className="w-4 h-4" />
+              <Activity className="w-3.5 h-3.5" />
             </button>
           )}
           {connected ? (
-            <Wifi className="w-4 h-4 text-[#43b581]" />
+            <Wifi className="w-3.5 h-3.5 text-[#43b581]" />
           ) : (
-            <WifiOff className="w-4 h-4 text-[#da373c]" />
+            <WifiOff className="w-3.5 h-3.5 text-[#da373c]" />
           )}
         </div>
       </div>
 
       {/* Thread List */}
       <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
-        <div className="px-2 py-1 text-xs font-semibold text-[#888] uppercase tracking-wide">
+        <div className="px-2 py-1 text-[10px] font-semibold text-[#666] uppercase tracking-wide">
           对话列表
         </div>
         {threads.map((thread) => (
@@ -65,56 +73,39 @@ export function Sidebar({ onShowDashboard }: { onShowDashboard?: () => void }) {
                 thread.id === currentThreadId ? 'text-white' : 'text-[#888] hover:text-white',
               )}
             >
-              <MessageSquare className="w-4 h-4 shrink-0" />
-              <span className="truncate">{thread.title}</span>
+              <MessageSquare className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate text-xs">{thread.title}</span>
             </button>
-            <button
-              onClick={() => handleDelete(thread.id)}
-              className="px-2 py-1.5 text-[#555] hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-              title="删除对话"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
+            {/* Hover actions */}
+            <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity shrink-0 pr-1 gap-0.5">
+              <button
+                onClick={(e) => { e.stopPropagation(); forkThread(thread.id) }}
+                disabled={!connected}
+                className="p-1 text-[#555] hover:text-[#5865f2] transition-colors disabled:opacity-30"
+                title="派生对话"
+              >
+                <GitFork className="w-3 h-3" />
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); handleDelete(thread.id) }}
+                disabled={!connected}
+                className="p-1 text-[#555] hover:text-red-400 transition-colors disabled:opacity-30"
+                title="删除对话"
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
+            </div>
           </div>
         ))}
         {threads.length === 0 && (
-          <div className="px-2 py-8 text-center text-xs text-[#888]">
+          <div className="px-2 py-8 text-center text-[10px] text-[#666]">
             还没有对话
           </div>
         )}
       </div>
 
-      {/* New / Delete Thread Buttons */}
-      <div className="p-2 border-t border-[#2a2a2a] flex gap-2">
-        <button
-          onClick={() => createThread('新对话')}
-          disabled={!connected}
-          className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded bg-[#5865f2] hover:bg-[#4752c4] text-white text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <Plus className="w-4 h-4" />
-          新建
-        </button>
-        {currentThreadId && (
-          <>
-            <button
-              onClick={() => forkThread(currentThreadId)}
-              disabled={!connected}
-              className="flex items-center justify-center px-3 py-2 rounded bg-[#4a4a4a] hover:bg-[#5865f2] text-white text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              title="派生当前对话"
-            >
-              <GitFork className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => handleDelete(currentThreadId)}
-              disabled={!connected}
-              className="flex items-center justify-center px-3 py-2 rounded bg-[#4a4a4a] hover:bg-red-600 text-white text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              title="删除当前对话"
-            >
-              <Minus className="w-4 h-4" />
-            </button>
-          </>
-        )}
-      </div>
+      {/* User Panel — bottom area */}
+      <UserPanel />
     </div>
   )
 }

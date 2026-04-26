@@ -35,7 +35,6 @@ export function TokenCostTab({ data }: TokenCostTabProps) {
 
   const dailyTokens = byDay.map((d: any) => d.tokens)
   const dailyCost = byDay.map((d: any) => d.costUsd)
-  const dailyLabels = byDay.map((d: any) => d.date)
 
   const maxDailyTokens = byDay.length > 0 ? Math.max(...dailyTokens) : 0
   const TOKEN_LIMIT = 1_000_000
@@ -81,13 +80,7 @@ export function TokenCostTab({ data }: TokenCostTabProps) {
       {/* 每日 Token 趋势 */}
       <Card title="每日 Token 消耗趋势" icon={<Hash className="w-3.5 h-3.5 text-[#5865f2]" />}>
         {dailyTokens.length >= 2 ? (
-          <div>
-            <Sparkline data={dailyTokens} width={800} height={100} color="#5865f2" />
-            <div className="flex justify-between text-[10px] text-[#555] mt-1">
-              <span>{dailyLabels[0]}</span>
-              <span>{dailyLabels[dailyLabels.length - 1]}</span>
-            </div>
-          </div>
+          <Sparkline data={dailyTokens} width={800} height={100} color="#5865f2" showValues />
         ) : (
           <div className="text-sm text-[#888] text-center py-6">数据不足，至少需要 2 天</div>
         )}
@@ -96,13 +89,7 @@ export function TokenCostTab({ data }: TokenCostTabProps) {
       {/* 每日成本趋势 */}
       <Card title="每日成本趋势 (USD)" icon={<DollarSign className="w-3.5 h-3.5 text-[#43b581]" />}>
         {dailyCost.length >= 2 ? (
-          <div>
-            <Sparkline data={dailyCost} width={800} height={80} color="#43b581" />
-            <div className="flex justify-between text-[10px] text-[#555] mt-1">
-              <span>{dailyLabels[0]}</span>
-              <span>{dailyLabels[dailyLabels.length - 1]}</span>
-            </div>
-          </div>
+          <Sparkline data={dailyCost} width={800} height={100} color="#43b581" showValues />
         ) : (
           <div className="text-sm text-[#888] text-center py-6">数据不足，至少需要 2 天</div>
         )}

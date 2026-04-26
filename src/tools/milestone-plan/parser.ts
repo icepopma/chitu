@@ -1,12 +1,45 @@
-import { readFileSync, writeFileSync } from 'node:fs'
-import { existsSync } from 'node:fs'
+import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Milestone, MilestonePlan, MilestoneStatus } from './types.js'
 
-const PLANS_FILE = 'plans.md'
+const DEFAULT_PLANS_FILE = 'docs/plans.md'
+const ACTIVE_PLAN_FILE = '.chitu/active-plan.json'
+
+/** Resolve which plan file to use: active-plan pointer → fallback to docs/plans.md */
+export function resolvePlanPath(projectRoot: string): string {
+  const pointerPath = join(projectRoot, ACTIVE_PLAN_FILE)
+  if (existsSync(pointerPath)) {
+    try {
+      const raw = JSON.parse(readFileSync(pointerPath, 'utf-8'))
+      if (raw.path && existsSync(join(projectRoot, raw.path))) {
+        return raw.path
+      }
+    } catch { /* invalid json, fall through */ }
+  }
+  return DEFAULT_PLANS_FILE
+}
+
+/** Set the active plan file pointer */
+export function setActivePlan(projectRoot: string, planPath: string): void {
+  const chituDir = join(projectRoot, '.chitu')
+  if (!existsSync(chituDir)) {
+    mkdirSync(chituDir, { recursive: true })
+  }
+  const pointerPath = join(projectRoot, ACTIVE_PLAN_FILE)
+  writeFileSync(pointerPath, JSON.stringify({ path: planPath, updatedAt: Date.now() }, null, 2), 'utf-8')
+}
+
+/** Clear the active plan pointer (revert to default) */
+export function clearActivePlan(projectRoot: string): void {
+  const pointerPath = join(projectRoot, ACTIVE_PLAN_FILE)
+  if (existsSync(pointerPath)) {
+    unlinkSync(pointerPath)
+  }
+}
 
 export function loadMilestonePlan(projectRoot: string): MilestonePlan | null {
-  const filePath = join(projectRoot, PLANS_FILE)
+  const planFile = resolvePlanPath(projectRoot)
+  const filePath = join(projectRoot, planFile)
   if (!existsSync(filePath)) return null
   try {
     const content = readFileSync(filePath, 'utf-8')
@@ -17,7 +50,8 @@ export function loadMilestonePlan(projectRoot: string): MilestonePlan | null {
 }
 
 export function saveMilestonePlan(projectRoot: string, plan: MilestonePlan): void {
-  const filePath = join(projectRoot, PLANS_FILE)
+  const planFile = resolvePlanPath(projectRoot)
+  const filePath = join(projectRoot, planFile)
   const content = serializePlansMd(plan)
   try {
     writeFileSync(filePath, content, 'utf-8')

@@ -2,11 +2,11 @@
 // 直接通过 WebSocket 测试 update_plan 工具的注册和事件流
 
 import { WebSocket } from 'ws'
-import { describe, test, expect, beforeAll, afterAll } from '@playwright/test'
+import { test, expect } from '@playwright/test'
 
 const WS_URL = 'ws://localhost:8080'
 
-describe('Plan Tool Backend', () => {
+test.describe('Plan Tool Backend', () => {
 
   test('update_plan tool should be registered', async () => {
     // 连接并初始化

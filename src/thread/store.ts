@@ -9,7 +9,28 @@ import { readFile, writeFile, unlink } from 'fs/promises'
 import { existsSync, mkdirSync } from 'fs'
 import { readdir } from 'fs/promises'
 import { getDb, isDbAvailable } from '../db/connection.js'
-import type { Thread } from '../types.js'
+import { logger } from '../monitoring/logger.js'
+import type { Thread, ThreadStatus } from '../types.js'
+
+/** 数据库行结构（PostgreSQL 查询结果） */
+interface ThreadRow {
+	id: string
+	title: string
+	status: string
+	items: string | unknown[]
+	current_plan: string | unknown[] | null
+	created_at: string | number
+	updated_at: string | number
+	owner_id: string | null
+	org_id: string | null
+}
+
+/** 数据库列表查询行（精简字段） */
+interface ThreadListRow {
+	id: string
+	title: string
+	updated_at: string | number
+}
 
 export class ThreadStore {
 	private dataDir: string
@@ -50,8 +71,8 @@ export class ThreadStore {
 						owner_id = EXCLUDED.owner_id,
 						org_id = EXCLUDED.org_id
 				`
-			} catch (err: any) {
-				console.warn(`[ThreadStore] 数据库写入失败，降级到文件: ${err.message}`)
+			} catch (err: unknown) {
+				logger.warn('DB write failed, falling back to file', { error: err instanceof Error ? err.message : String(err) })
 				this.useDb = false
 			}
 		}
@@ -60,8 +81,8 @@ export class ThreadStore {
 		try {
 			const filePath = `${this.dataDir}/${thread.id}.json`
 			await writeFile(filePath, JSON.stringify(thread, null, 2), 'utf-8')
-		} catch (err: any) {
-			console.warn(`[ThreadStore] JSON 备份写入失败: ${err.message}`)
+		} catch (err: unknown) {
+			logger.warn('JSON backup write failed', { error: err instanceof Error ? err.message : String(err) })
 		}
 	}
 
@@ -74,12 +95,12 @@ export class ThreadStore {
 				const rows = await sql`
 					SELECT id, title, status, items, current_plan, created_at, updated_at, owner_id, org_id
 					FROM threads WHERE id = ${threadId}
-				` as any[]
+				` as ThreadRow[]
 				if (rows.length > 0) {
 					return this.rowToThread(rows[0])
 				}
-			} catch (err: any) {
-				console.warn(`[ThreadStore] 数据库读取失败，降级到文件: ${err.message}`)
+			} catch (err: unknown) {
+				logger.warn('DB read failed, falling back to file', { error: err instanceof Error ? err.message : String(err) })
 				this.useDb = false
 			}
 		}
@@ -100,15 +121,15 @@ export class ThreadStore {
 				const rows = await sql`
 					SELECT id, title, updated_at
 					FROM threads ORDER BY updated_at DESC
-				` as any[]
+				` as ThreadListRow[]
 
-				return rows.map(row => ({
+				return rows.map((row: ThreadListRow) => ({
 					id: row.id,
 					title: row.title || 'Untitled',
-					updatedAt: row.updated_at,
+					updatedAt: Number(row.updated_at),
 				}))
-			} catch (err: any) {
-				console.warn(`[ThreadStore] 数据库列出失败，降级到文件: ${err.message}`)
+			} catch (err: unknown) {
+				logger.warn('DB list failed, falling back to files', { error: err instanceof Error ? err.message : String(err) })
 				this.useDb = false
 			}
 		}
@@ -144,8 +165,8 @@ export class ThreadStore {
 			try {
 				const sql = getDb()
 				await sql`DELETE FROM threads WHERE id = ${threadId}`
-			} catch (err: any) {
-				console.warn(`[ThreadStore] 数据库删除失败: ${err.message}`)
+			} catch (err: unknown) {
+				logger.warn('DB delete failed', { error: err instanceof Error ? err.message : String(err) })
 				this.useDb = false
 			}
 		}
@@ -158,7 +179,7 @@ export class ThreadStore {
 	}
 
 	/** 数据库行转 Thread 对象 */
-	private rowToThread(row: any): Thread {
+	private rowToThread(row: ThreadRow): Thread {
 		const items = typeof row.items === 'string' ? JSON.parse(row.items) : (row.items || [])
 		const currentPlan = row.current_plan
 			? (typeof row.current_plan === 'string' ? JSON.parse(row.current_plan) : row.current_plan)
@@ -167,7 +188,7 @@ export class ThreadStore {
 		return {
 			id: row.id,
 			title: row.title || 'Untitled',
-			status: row.status || 'created',
+			status: (row.status || 'created') as ThreadStatus,
 			items,
 			currentPlan,
 			createdAt: Number(row.created_at),
