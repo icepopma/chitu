@@ -211,11 +211,11 @@ export function ChatInput() {
         >
           <Eye className="w-4 h-4" />
         </button>
-        {/* 自主运行开关 */}
+        {/* 长任务模式开关 */}
         <button
           onClick={() => setAutoMode(!autoMode)}
           className={`p-2 rounded transition-colors ${autoMode ? 'bg-[#faa61a] text-[#1a1a1a]' : 'text-[#888] hover:text-white hover:bg-[#3a3a3a]'}`}
-          title={autoMode ? '自主运行模式已开启（自动批准所有操作）' : '开启自主运行模式'}
+          title={autoMode ? '长任务模式已开启（自动批准 + 里程碑追踪）' : '开启长任务模式'}
         >
           {autoMode ? <Zap className="w-4 h-4" /> : <ZapOff className="w-4 h-4" />}
         </button>
@@ -240,7 +240,7 @@ export function ChatInput() {
       </div>
       {autoMode && (
         <div className="text-[11px] text-[#faa61a] mt-1 px-1">
-          自主运行模式：所有工具操作将被自动批准，无需手动确认
+          长任务模式：自动批准 + 里程碑追踪
         </div>
       )}
       {reviewMode && (

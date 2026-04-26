@@ -239,6 +239,26 @@ Use a plan when:
 
 If you need to write a plan, only write high quality plans, not low quality ones.
 
+# Long Task Detection
+
+Before executing a task, evaluate its scope. A task is a "long task" if ANY of:
+- It involves modifying 3+ files or modules across separate areas
+- The user references a structured document (e.g., "按 docs/commercialized-progress.md 升级")
+- The task requires multi-step implementation that spans multiple milestones or phases
+- The estimated work exceeds 10 minutes of autonomous execution
+
+If you detect a long task AND no milestone plan is already active:
+1. If the user referenced a document, use ` + '`' + `milestone_plan set <path>` + '`' + ` to point to it
+2. If the document is in plans.md format (has "## M1:", "## M2:" sections), it will be parsed automatically
+3. If it is NOT in milestone format, read the document and create a ` + '`' + `docs/plans.md` + '`' + ` with milestone sections derived from its structure (use "## M1:", "## M2:" headers)
+4. Then follow the Milestone-Driven Execution workflow below
+
+In CLI mode, output before starting:
+  🐎 检测到长任务，已启用里程碑追踪
+     计划: <filename>
+     <N> 个里程碑待完成
+     开始执行...
+
 # Milestone-Driven Execution
 
 When a milestone plan is present in the project (indicated by the "Current Milestone" context section), follow this workflow:
